@@ -2,11 +2,12 @@
 
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BookX, SearchX, Filter, X } from "lucide-react";
+import { BookX, SearchX, Filter, X, Sparkles, ChevronLeft } from "lucide-react";
 import { useAppStore, type Book } from "@/store/useAppStore";
 import BookCard from "@/components/BookCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface BookGridProps {
   books: Book[];
@@ -165,6 +166,9 @@ export default function BookGrid({ books }: BookGridProps) {
 
   return (
     <div dir="rtl" className="flex flex-col gap-4">
+      {/* ── Recent books notification banner ── */}
+      <RecentBooksBanner books={books} />
+
       {/* Category filter bar */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         <Filter className="size-4 shrink-0 text-muted-foreground" />
@@ -267,5 +271,99 @@ export default function BookGrid({ books }: BookGridProps) {
         </motion.div>
       )}
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Recent Books Banner (shown when new books exist)
+   ═══════════════════════════════════════════════════════════════ */
+function RecentBooksBanner({ books }: { books: Book[] }) {
+  const [dismissed, setDismissed] = useState(false);
+  const setSelectedBook = useAppStore((s) => s.setSelectedBook);
+  const setBookContent = useAppStore((s) => s.setBookContent);
+  const setView = useAppStore((s) => s.setView);
+
+  const recentBooks = useMemo(() => {
+    const week = 7 * 24 * 60 * 60 * 1000;
+    return books
+      .filter((b) => Date.now() - new Date(b.createdAt).getTime() < week)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [books]);
+
+  if (dismissed || recentBooks.length === 0) return null;
+
+  const handleOpen = async (book: Book) => {
+    setSelectedBook(book);
+    try {
+      const res = await fetch(`/api/books/${book.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setBookContent(data.content || "");
+        cacheBookOffline(book, data.content || "");
+      }
+    } catch {
+      setBookContent("");
+    }
+    setView("reader");
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-l from-primary/5 via-primary/10 to-background"
+    >
+      <div className="flex items-center justify-between px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <div className="flex size-7 items-center justify-center rounded-lg bg-primary/15">
+            <Sparkles className="size-3.5 text-primary" />
+          </div>
+          <span className="text-sm font-semibold">
+            تازه‌های کتابخانه
+          </span>
+          <Badge variant="secondary" className="text-[10px]">
+            {recentBooks.length} کتاب جدید
+          </Badge>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          onClick={() => setDismissed(true)}
+        >
+          <X className="size-3" />
+        </Button>
+      </div>
+
+      {/* Horizontal scroll of recent books */}
+      <div className="flex gap-2.5 overflow-x-auto px-4 pb-3">
+        {recentBooks.slice(0, 8).map((book) => (
+          <Card
+            key={book.id}
+            className="w-36 shrink-0 cursor-pointer overflow-hidden rounded-xl border-0 py-0 shadow-sm transition-shadow hover:shadow-md"
+            onClick={() => handleOpen(book)}
+          >
+            <div
+              className="flex h-20 w-full items-center justify-center"
+              style={{ backgroundColor: book.coverColor }}
+            >
+              <Sparkles className="size-8 text-white/80" />
+            </div>
+            <CardContent className="p-2.5">
+              <p className="line-clamp-1 text-xs font-bold leading-tight">
+                {book.title}
+              </p>
+              <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground">
+                {book.author}
+              </p>
+              <div className="mt-1.5 flex items-center gap-1">
+                <Badge className="text-[8px] px-1.5 py-0">جدید</Badge>
+                <ChevronLeft className="size-2.5 text-muted-foreground" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </motion.div>
   );
 }

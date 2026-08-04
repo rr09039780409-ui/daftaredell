@@ -19,11 +19,11 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    /* Public: only active */
+    /* Public: only active — include content & date */
     const items = await db.announcement.findMany({
       where: { active: true },
       orderBy: { createdAt: "desc" },
-      select: { id: true, title: true, type: true, createdAt: true },
+      select: { id: true, title: true, content: true, type: true, createdAt: true },
     });
     return NextResponse.json(items);
   } catch (error) {
