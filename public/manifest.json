@@ -1,6 +1,6 @@
 {
-  "name": "کتابخانه - کتاب‌خوان آنلاین",
-  "short_name": "کتابخانه",
+  "name": "کتابخانه | دفتر دل",
+  "short_name": "دفتر دل",
   "description": "کتاب‌خوان آنلاین فارسی با حفاظت متن و قابلیت آفلاین",
   "start_url": "/",
   "display": "standalone",
@@ -11,9 +11,9 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+      "src": "/icon.gif",
       "sizes": "any",
-      "type": "image/svg+xml",
+      "type": "image/gif",
       "purpose": "any"
     }
   ]

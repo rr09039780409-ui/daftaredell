@@ -2,7 +2,6 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  BookOpen,
   ArrowRight,
   Search,
   Shield,
@@ -135,13 +134,18 @@ export function Header() {
                   view === "library" && "pointer-events-none"
                 )}
               >
-                <BookOpen className="size-6 text-primary" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/icon.gif"
+                  alt="لوگو"
+                  className="size-7 rounded-sm object-contain"
+                />
                 <div className="flex flex-col items-start">
                   <span className="text-lg font-extrabold leading-tight tracking-tight">
                     کتابخانه
                   </span>
                   <span className="text-[10px] leading-none text-muted-foreground">
-                    کتاب‌خوان آنلاین
+                    دفتر دل
                   </span>
                 </div>
               </motion.button>

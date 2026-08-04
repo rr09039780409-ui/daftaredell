@@ -4,16 +4,17 @@ import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "next-themes";
 
 export const metadata: Metadata = {
-  title: "کتابخانه | کتاب‌خوان آنلاین",
+  metadataBase: new URL("https://daftaredell.ir"),
+  title: "کتابخانه | دفتر دل",
   description: "کتاب‌خوان آنلاین با حفاظت متن، تغییر تم و سایز فونت",
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/icon.gif",
   },
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "کتابخانه",
+    title: "دفتر دل",
   },
 };
 
