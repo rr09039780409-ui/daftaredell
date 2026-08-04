@@ -1,0 +1,895 @@
+     1→"use client";
+     2→
+     3→import { useEffect, useState, useCallback } from "react";
+     4→import { motion, AnimatePresence } from "framer-motion";
+     5→import {
+     6→  Lock,
+     7→  Plus,
+     8→  Pencil,
+     9→  Trash2,
+    10→  BookOpen,
+    11→  FolderOpen,
+    12→  ShieldCheck,
+    13→  Loader2,
+    14→  LogOut,
+    15→} from "lucide-react";
+    16→import { useAppStore, type Book } from "@/store/useAppStore";
+    17→import { toast } from "@/hooks/use-toast";
+    18→
+    19→import { Button } from "@/components/ui/button";
+    20→import { Input } from "@/components/ui/input";
+    21→import { Textarea } from "@/components/ui/textarea";
+    22→import { Label } from "@/components/ui/label";
+    23→import {
+    24→  Dialog,
+    25→  DialogContent,
+    26→  DialogHeader,
+    27→  DialogTitle,
+    28→  DialogDescription,
+    29→  DialogFooter,
+    30→} from "@/components/ui/dialog";
+    31→import {
+    32→  Select,
+    33→  SelectContent,
+    34→  SelectItem,
+    35→  SelectTrigger,
+    36→  SelectValue,
+    37→} from "@/components/ui/select";
+    38→import { Card, CardContent } from "@/components/ui/card";
+    39→import { Badge } from "@/components/ui/badge";
+    40→import { Separator } from "@/components/ui/separator";
+    41→import {
+    42→  AlertDialog,
+    43→  AlertDialogContent,
+    44→  AlertDialogHeader,
+    45→  AlertDialogTitle,
+    46→  AlertDialogDescription,
+    47→  AlertDialogFooter,
+    48→  AlertDialogAction,
+    49→  AlertDialogCancel,
+    50→} from "@/components/ui/alert-dialog";
+    51→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    52→
+    53→let adminPw = "";
+    54→
+    55→const PRESET_COLORS = [
+    56→  "#6366f1",
+    57→  "#8b5cf6",
+    58→  "#ec4899",
+    59→  "#f43f5e",
+    60→  "#ef4444",
+    61→  "#f97316",
+    62→  "#eab308",
+    63→  "#22c55e",
+    64→  "#14b8a6",
+    65→  "#06b6d4",
+    66→  "#0ea5e9",
+    67→  "#3b82f6",
+    68→  "#64748b",
+    69→  "#78716c",
+    70→  "#a855f7",
+    71→  "#d946ef",
+    72→];
+    73→
+    74→interface BookFormData {
+    75→  title: string;
+    76→  author: string;
+    77→  categoryId: string;
+    78→  description: string;
+    79→  content: string;
+    80→  coverColor: string;
+    81→}
+    82→
+    83→const emptyBookForm: BookFormData = {
+    84→  title: "",
+    85→  author: "",
+    86→  categoryId: "",
+    87→  description: "",
+    88→  content: "",
+    89→  coverColor: "#6366f1",
+    90→};
+    91→
+    92→export default function AdminPanel() {
+    93→  const isAdmin = useAppStore((s) => s.isAdmin);
+    94→  const books = useAppStore((s) => s.books);
+    95→  const categories = useAppStore((s) => s.categories);
+    96→  const setAdmin = useAppStore((s) => s.setAdmin);
+    97→  const setBooks = useAppStore((s) => s.setBooks);
+    98→  const setCategories = useAppStore((s) => s.setCategories);
+    99→  const setView = useAppStore((s) => s.setView);
+   100→
+   101→  const [loginPassword, setLoginPassword] = useState("");
+   102→  const [loginLoading, setLoginLoading] = useState(false);
+   103→
+   104→  const [bookDialogOpen, setBookDialogOpen] = useState(false);
+   105→  const [editingBook, setEditingBook] = useState<Book | null>(null);
+   106→  const [bookForm, setBookForm] = useState<BookFormData>(emptyBookForm);
+   107→  const [bookSubmitting, setBookSubmitting] = useState(false);
+   108→
+   109→  const [deleteBookId, setDeleteBookId] = useState<string | null>(null);
+   110→  const [deleteBookLoading, setDeleteBookLoading] = useState(false);
+   111→
+   112→  const [deleteCatId, setDeleteCatId] = useState<string | null>(null);
+   113→  const [deleteCatLoading, setDeleteCatLoading] = useState(false);
+   114→
+   115→  const [newCatName, setNewCatName] = useState("");
+   116→  const [addCatLoading, setAddCatLoading] = useState(false);
+   117→
+   118→  const refreshBooks = useCallback(async () => {
+   119→    try {
+   120→      const res = await fetch("/api/books");
+   121→      if (res.ok) {
+   122→        const data = await res.json();
+   123→        setBooks(data);
+   124→      }
+   125→    } catch {
+   126→      toast({ title: "خطا", description: "خطا در دریافت کتاب‌ها" });
+   127→    }
+   128→  }, [setBooks]);
+   129→
+   130→  const refreshCategories = useCallback(async () => {
+   131→    try {
+   132→      const res = await fetch("/api/categories");
+   133→      if (res.ok) {
+   134→        const data = await res.json();
+   135→        setCategories(data);
+   136→      }
+   137→    } catch {
+   138→      toast({ title: "خطا", description: "خطا در دریافت دسته‌بندی‌ها" });
+   139→    }
+   140→  }, [setCategories]);
+   141→
+   142→  useEffect(() => {
+   143→    if (isAdmin) {
+   144→      refreshBooks();
+   145→      refreshCategories();
+   146→    }
+   147→  }, [isAdmin, refreshBooks, refreshCategories]);
+   148→
+   149→  const handleLogin = async (e: React.FormEvent) => {
+   150→    e.preventDefault();
+   151→    if (!loginPassword.trim()) return;
+   152→    setLoginLoading(true);
+   153→    try {
+   154→      const res = await fetch("/api/auth", {
+   155→        method: "POST",
+   156→        headers: { "Content-Type": "application/json" },
+   157→        body: JSON.stringify({ password: loginPassword }),
+   158→      });
+   159→      const data = await res.json();
+   160→      if (res.ok) {
+   161→        adminPw = loginPassword;
+   162→        setAdmin(true);
+   163→        toast({
+   164→          title: "ورود موفق",
+   165→          description: "به پنل مدیریت خوش آمدید",
+   166→        });
+   167→        setLoginPassword("");
+   168→      } else {
+   169→        toast({
+   170→          title: "خطا در ورود",
+   171→          description: data.error || "رمز عبور اشتباه است",
+   172→          variant: "destructive",
+   173→        });
+   174→      }
+   175→    } catch {
+   176→      toast({
+   177→        title: "خطا",
+   178→        description: "خطا در ارتباط با سرور",
+   179→        variant: "destructive",
+   180→      });
+   181→    } finally {
+   182→      setLoginLoading(false);
+   183→    }
+   184→  };
+   185→
+   186→  const handleLogout = () => {
+   187→    setAdmin(false);
+   188→    adminPw = "";
+   189→    setView("library");
+   190→  };
+   191→
+   192→  const openAddBookDialog = () => {
+   193→    setEditingBook(null);
+   194→    setBookForm(emptyBookForm);
+   195→    setBookDialogOpen(true);
+   196→  };
+   197→
+   198→  const openEditBookDialog = async (book: Book) => {
+   199→    setEditingBook(book);
+   200→    let content = "";
+   201→    try {
+   202→      const res = await fetch(`/api/books/${book.id}`);
+   203→      if (res.ok) {
+   204→        const data = await res.json();
+   205→        content = data.content || "";
+   206→      }
+   207→    } catch {
+   208→      toast({
+   209→        title: "خطا",
+   210→        description: "خطا در دریافت محتوای کتاب",
+   211→        variant: "destructive",
+   212→      });
+   213→    }
+   214→    setBookForm({
+   215→      title: book.title,
+   216→      author: book.author,
+   217→      categoryId: book.categoryId || "",
+   218→      description: book.description,
+   219→      content: content,
+   220→      coverColor: book.coverColor,
+   221→    });
+   222→    setBookDialogOpen(true);
+   223→  };
+   224→
+   225→  const handleBookSubmit = async (e: React.FormEvent) => {
+   226→    e.preventDefault();
+   227→    if (!bookForm.title.trim() || !bookForm.content.trim()) {
+   228→      toast({
+   229→        title: "خطا",
+   230→        description: "عنوان و محتوای کتاب الزامی است",
+   231→        variant: "destructive",
+   232→      });
+   233→      return;
+   234→    }
+   235→    setBookSubmitting(true);
+   236→    try {
+   237→      const payload = {
+   238→        title: bookForm.title,
+   239→        author: bookForm.author,
+   240→        categoryId: bookForm.categoryId || null,
+   241→        description: bookForm.description,
+   242→        content: bookForm.content,
+   243→        coverColor: bookForm.coverColor,
+   244→        adminPassword: adminPw,
+   245→      };
+   246→
+   247→      let res: Response;
+   248→      if (editingBook) {
+   249→        res = await fetch(`/api/books/${editingBook.id}`, {
+   250→          method: "PUT",
+   251→          headers: { "Content-Type": "application/json" },
+   252→          body: JSON.stringify(payload),
+   253→        });
+   254→      } else {
+   255→        res = await fetch("/api/books", {
+   256→          method: "POST",
+   257→          headers: { "Content-Type": "application/json" },
+   258→          body: JSON.stringify(payload),
+   259→        });
+   260→      }
+   261→
+   262→      const data = await res.json();
+   263→      if (res.ok) {
+   264→        toast({
+   265→          title: editingBook ? "کتاب به‌روزرسانی شد" : "کتاب ایجاد شد",
+   266→          description: data.message || "عملیات با موفقیت انجام شد",
+   267→        });
+   268→        setBookDialogOpen(false);
+   269→        await refreshBooks();
+   270→      } else {
+   271→        toast({
+   272→          title: "خطا",
+   273→          description: data.error || "خطا در انجام عملیات",
+   274→          variant: "destructive",
+   275→        });
+   276→      }
+   277→    } catch {
+   278→      toast({
+   279→        title: "خطا",
+   280→        description: "خطا در ارتباط با سرور",
+   281→        variant: "destructive",
+   282→      });
+   283→    } finally {
+   284→      setBookSubmitting(false);
+   285→    }
+   286→  };
+   287→
+   288→  const handleDeleteBook = async () => {
+   289→    if (!deleteBookId) return;
+   290→    setDeleteBookLoading(true);
+   291→    try {
+   292→      const res = await fetch(`/api/books/${deleteBookId}`, {
+   293→        method: "DELETE",
+   294→        headers: { "Content-Type": "application/json" },
+   295→        body: JSON.stringify({ adminPassword: adminPw }),
+   296→      });
+   297→      const data = await res.json();
+   298→      if (res.ok) {
+   299→        toast({
+   300→          title: "کتاب حذف شد",
+   301→          description: data.message || "کتاب با موفقیت حذف شد",
+   302→        });
+   303→        setDeleteBookId(null);
+   304→        await refreshBooks();
+   305→        await refreshCategories();
+   306→      } else {
+   307→        toast({
+   308→          title: "خطا",
+   309→          description: data.error || "خطا در حذف کتاب",
+   310→          variant: "destructive",
+   311→        });
+   312→      }
+   313→    } catch {
+   314→      toast({
+   315→        title: "خطا",
+   316→        description: "خطا در ارتباط با سرور",
+   317→        variant: "destructive",
+   318→      });
+   319→    } finally {
+   320→      setDeleteBookLoading(false);
+   321→    }
+   322→  };
+   323→
+   324→  const handleAddCategory = async (e: React.FormEvent) => {
+   325→    e.preventDefault();
+   326→    if (!newCatName.trim()) return;
+   327→    setAddCatLoading(true);
+   328→    try {
+   329→      const res = await fetch("/api/categories", {
+   330→        method: "POST",
+   331→        headers: { "Content-Type": "application/json" },
+   332→        body: JSON.stringify({ name: newCatName, adminPassword: adminPw }),
+   333→      });
+   334→      const data = await res.json();
+   335→      if (res.ok) {
+   336→        toast({ title: "دسته‌بندی ایجاد شد", description: `«${newCatName}» با موفقیت اضافه شد` });
+   337→        setNewCatName("");
+   338→        await refreshCategories();
+   339→      } else {
+   340→        toast({
+   341→          title: "خطا",
+   342→          description: data.error || "خطا در ایجاد دسته‌بندی",
+   343→          variant: "destructive",
+   344→        });
+   345→      }
+   346→    } catch {
+   347→      toast({
+   348→        title: "خطا",
+   349→        description: "خطا در ارتباط با سرور",
+   350→        variant: "destructive",
+   351→      });
+   352→    } finally {
+   353→      setAddCatLoading(false);
+   354→    }
+   355→  };
+   356→
+   357→  const handleDeleteCategory = async () => {
+   358→    if (!deleteCatId) return;
+   359→    setDeleteCatLoading(true);
+   360→    try {
+   361→      const res = await fetch(`/api/categories/${deleteCatId}`, {
+   362→        method: "DELETE",
+   363→        headers: { "Content-Type": "application/json" },
+   364→        body: JSON.stringify({ adminPassword: adminPw }),
+   365→      });
+   366→      const data = await res.json();
+   367→      if (res.ok) {
+   368→        toast({
+   369→          title: "دسته‌بندی حذف شد",
+   370→          description: data.message || "دسته‌بندی با موفقیت حذف شد",
+   371→        });
+   372→        setDeleteCatId(null);
+   373→        await refreshCategories();
+   374→        await refreshBooks();
+   375→      } else {
+   376→        toast({
+   377→          title: "خطا",
+   378→          description: data.error || "خطا در حذف دسته‌بندی",
+   379→          variant: "destructive",
+   380→        });
+   381→      }
+   382→    } catch {
+   383→      toast({
+   384→        title: "خطا",
+   385→        description: "خطا در ارتباط با سرور",
+   386→        variant: "destructive",
+   387→      });
+   388→    } finally {
+   389→      setDeleteCatLoading(false);
+   390→    }
+   391→  };
+   392→
+   393→  return (
+   394→    <div dir="rtl" className="min-h-screen bg-background">
+   395→      <AnimatePresence mode="wait">
+   396→        {!isAdmin ? (
+   397→          <motion.div
+   398→            key="login"
+   399→            initial={{ opacity: 0, y: 20 }}
+   400→            animate={{ opacity: 1, y: 0 }}
+   401→            exit={{ opacity: 0, y: -20 }}
+   402→            className="flex min-h-screen items-center justify-center p-4"
+   403→          >
+   404→            <Card className="w-full max-w-md shadow-xl">
+   405→              <CardContent className="p-6 sm:p-8">
+   406→                <div className="mb-6 flex flex-col items-center gap-3">
+   407→                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+   408→                    <ShieldCheck className="h-8 w-8 text-primary" />
+   409→                  </div>
+   410→                  <h1 className="text-xl font-bold">پنل مدیریت</h1>
+   411→                  <p className="text-sm text-muted-foreground">
+   412→                    برای ورود رمز عبور ادمین را وارد کنید
+   413→                  </p>
+   414→                </div>
+   415→                <form onSubmit={handleLogin} className="space-y-4">
+   416→                  <div className="space-y-2">
+   417→                    <Label htmlFor="admin-password">رمز عبور</Label>
+   418→                    <div className="relative">
+   419→                      <Lock className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   420→                      <Input
+   421→                        id="admin-password"
+   422→                        type="password"
+   423→                        placeholder="رمز عبور خود را وارد کنید..."
+   424→                        value={loginPassword}
+   425→                        onChange={(e) => setLoginPassword(e.target.value)}
+   426→                        className="pr-10"
+   427→                        disabled={loginLoading}
+   428→                      />
+   429→                    </div>
+   430→                  </div>
+   431→                  <Button
+   432→                    type="submit"
+   433→                    className="w-full"
+   434→                    disabled={loginLoading || !loginPassword.trim()}
+   435→                  >
+   436→                    {loginLoading ? (
+   437→                      <>
+   438→                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   439→                        در حال ورود...
+   440→                      </>
+   441→                    ) : (
+   442→                      "ورود به پنل"
+   443→                    )}
+   444→                  </Button>
+   445→                </form>
+   446→                <Button
+   447→                  variant="ghost"
+   448→                  className="mt-4 w-full text-muted-foreground"
+   449→                  onClick={() => setView("library")}
+   450→                >
+   451→                  بازگشت به کتابخانه
+   452→                </Button>
+   453→              </CardContent>
+   454→            </Card>
+   455→          </motion.div>
+   456→        ) : (
+   457→          <motion.div
+   458→            key="panel"
+   459→            initial={{ opacity: 0, y: 20 }}
+   460→            animate={{ opacity: 1, y: 0 }}
+   461→            exit={{ opacity: 0, y: -20 }}
+   462→            className="mx-auto max-w-4xl p-4 sm:p-6"
+   463→          >
+   464→            <div className="mb-6 flex items-center justify-between">
+   465→              <div className="flex items-center gap-3">
+   466→                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+   467→                  <ShieldCheck className="h-5 w-5 text-primary" />
+   468→                </div>
+   469→                <div>
+   470→                  <h1 className="text-xl font-bold">پنل مدیریت</h1>
+   471→                  <p className="text-sm text-muted-foreground">
+   472→                    مدیریت کتاب‌ها و دسته‌بندی‌ها
+   473→                  </p>
+   474→                </div>
+   475→              </div>
+   476→              <Button
+   477→                variant="outline"
+   478→                size="sm"
+   479→                onClick={handleLogout}
+   480→                className="text-destructive hover:text-destructive"
+   481→              >
+   482→                <LogOut className="ml-2 h-4 w-4" />
+   483→                خروج
+   484→              </Button>
+   485→            </div>
+   486→
+   487→            <Separator className="mb-6" />
+   488→
+   489→            <Tabs defaultValue="books" dir="rtl">
+   490→              <TabsList className="mb-6 grid w-full grid-cols-2">
+   491→                <TabsTrigger value="books" className="gap-2">
+   492→                  <BookOpen className="h-4 w-4" />
+   493→                  کتاب‌ها
+   494→                </TabsTrigger>
+   495→                <TabsTrigger value="categories" className="gap-2">
+   496→                  <FolderOpen className="h-4 w-4" />
+   497→                  دسته‌بندی‌ها
+   498→                </TabsTrigger>
+   499→              </TabsList>
+   500→
+   501→              <TabsContent value="books">
+   502→                <div className="mb-4 flex items-center justify-between">
+   503→                  <h2 className="text-lg font-semibold">
+   504→                    لیست کتاب‌ها ({books.length})
+   505→                  </h2>
+   506→                  <Button onClick={openAddBookDialog} size="sm" className="gap-2">
+   507→                    <Plus className="h-4 w-4" />
+   508→                    افزودن کتاب
+   509→                  </Button>
+   510→                </div>
+   511→
+   512→                {books.length === 0 ? (
+   513→                  <motion.div
+   514→                    initial={{ opacity: 0 }}
+   515→                    animate={{ opacity: 1 }}
+   516→                    className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center"
+   517→                  >
+   518→                    <BookOpen className="mb-3 h-12 w-12 text-muted-foreground/40" />
+   519→                    <p className="text-muted-foreground">هنوز کتابی اضافه نشده است</p>
+   520→                    <Button
+   521→                      variant="link"
+   522→                      className="mt-2"
+   523→                      onClick={openAddBookDialog}
+   524→                    >
+   525→                      افزودن اولین کتاب
+   526→                    </Button>
+   527→                  </motion.div>
+   528→                ) : (
+   529→                  <div className="space-y-3 max-h-[70vh] overflow-y-auto">
+   530→                    {books.map((book, index) => (
+   531→                      <motion.div
+   532→                        key={book.id}
+   533→                        initial={{ opacity: 0, x: 20 }}
+   534→                        animate={{ opacity: 1, x: 0 }}
+   535→                        transition={{ delay: index * 0.05 }}
+   536→                      >
+   537→                        <Card className="overflow-hidden transition-shadow hover:shadow-md">
+   538→                          <CardContent className="flex items-center gap-4 p-4">
+   539→                            <div
+   540→                              className="h-12 w-10 shrink-0 rounded-md"
+   541→                              style={{ backgroundColor: book.coverColor }}
+   542→                            />
+   543→                            <div className="min-w-0 flex-1">
+   544→                              <div className="flex items-center gap-2">
+   545→                                <h3 className="truncate font-medium">{book.title}</h3>
+   546→                                {book.category && (
+   547→                                  <Badge variant="secondary" className="shrink-0 text-xs">
+   548→                                    {book.category.name}
+   549→                                  </Badge>
+   550→                                )}
+   551→                              </div>
+   552→                              {book.author && (
+   553→                                <p className="truncate text-sm text-muted-foreground">
+   554→                                  {book.author}
+   555→                                </p>
+   556→                              )}
+   557→                            </div>
+   558→                            <div className="flex shrink-0 gap-1">
+   559→                              <Button
+   560→                                variant="ghost"
+   561→                                size="sm"
+   562→                                className="h-8 w-8 p-0"
+   563→                                onClick={() => openEditBookDialog(book)}
+   564→                              >
+   565→                                <Pencil className="h-4 w-4" />
+   566→                                <span className="sr-only">ویرایش</span>
+   567→                              </Button>
+   568→                              <Button
+   569→                                variant="ghost"
+   570→                                size="sm"
+   571→                                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+   572→                                onClick={() => setDeleteBookId(book.id)}
+   573→                              >
+   574→                                <Trash2 className="h-4 w-4" />
+   575→                                <span className="sr-only">حذف</span>
+   576→                              </Button>
+   577→                            </div>
+   578→                          </CardContent>
+   579→                        </Card>
+   580→                      </motion.div>
+   581→                    ))}
+   582→                  </div>
+   583→                )}
+   584→              </TabsContent>
+   585→
+   586→              <TabsContent value="categories">
+   587→                <div className="mb-4">
+   588→                  <h2 className="mb-4 text-lg font-semibold">
+   589→                    دسته‌بندی‌ها ({categories.length})
+   590→                  </h2>
+   591→
+   592→                  <form
+   593→                    onSubmit={handleAddCategory}
+   594→                    className="mb-6 flex items-center gap-2"
+   595→                  >
+   596→                    <Input
+   597→                      placeholder="نام دسته‌بندی جدید..."
+   598→                      value={newCatName}
+   599→                      onChange={(e) => setNewCatName(e.target.value)}
+   600→                      disabled={addCatLoading}
+   601→                      className="flex-1"
+   602→                    />
+   603→                    <Button
+   604→                      type="submit"
+   605→                      size="sm"
+   606→                      disabled={addCatLoading || !newCatName.trim()}
+   607→                      className="gap-2 shrink-0"
+   608→                    >
+   609→                      {addCatLoading ? (
+   610→                        <Loader2 className="h-4 w-4 animate-spin" />
+   611→                      ) : (
+   612→                        <Plus className="h-4 w-4" />
+   613→                      )}
+   614→                      افزودن
+   615→                    </Button>
+   616→                  </form>
+   617→
+   618→                  <Separator className="mb-4" />
+   619→
+   620→                  {categories.length === 0 ? (
+   621→                    <motion.div
+   622→                      initial={{ opacity: 0 }}
+   623→                      animate={{ opacity: 1 }}
+   624→                      className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center"
+   625→                    >
+   626→                      <FolderOpen className="mb-3 h-12 w-12 text-muted-foreground/40" />
+   627→                      <p className="text-muted-foreground">هنوز دسته‌بندی‌ای ایجاد نشده است</p>
+   628→                    </motion.div>
+   629→                  ) : (
+   630→                    <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+   631→                      {categories.map((cat, index) => (
+   632→                        <motion.div
+   633→                          key={cat.id}
+   634→                          initial={{ opacity: 0, x: 20 }}
+   635→                          animate={{ opacity: 1, x: 0 }}
+   636→                          transition={{ delay: index * 0.05 }}
+   637→                        >
+   638→                          <Card className="transition-shadow hover:shadow-md">
+   639→                            <CardContent className="flex items-center justify-between p-4">
+   640→                              <div className="flex items-center gap-3">
+   641→                                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+   642→                                  <FolderOpen className="h-4 w-4 text-primary" />
+   643→                                </div>
+   644→                                <div>
+   645→                                  <p className="font-medium">{cat.name}</p>
+   646→                                  <p className="text-xs text-muted-foreground">
+   647→                                    {cat._count.books} کتاب
+   648→                                  </p>
+   649→                                </div>
+   650→                              </div>
+   651→                              <Button
+   652→                                variant="ghost"
+   653→                                size="sm"
+   654→                                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+   655→                                onClick={() => setDeleteCatId(cat.id)}
+   656→                              >
+   657→                                <Trash2 className="h-4 w-4" />
+   658→                                <span className="sr-only">حذف</span>
+   659→                              </Button>
+   660→                            </CardContent>
+   661→                          </Card>
+   662→                        </motion.div>
+   663→                      ))}
+   664→                    </div>
+   665→                  )}
+   666→                </div>
+   667→              </TabsContent>
+   668→            </Tabs>
+   669→
+   670→            <Dialog open={bookDialogOpen} onOpenChange={setBookDialogOpen}>
+   671→              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+   672→                <DialogHeader>
+   673→                  <DialogTitle>
+   674→                    {editingBook ? "ویرایش کتاب" : "افزودن کتاب جدید"}
+   675→                  </DialogTitle>
+   676→                  <DialogDescription>
+   677→                    {editingBook
+   678→                      ? "اطلاعات کتاب را ویرایش کنید"
+   679→                      : "اطلاعات کتاب جدید را وارد کنید"}
+   680→                  </DialogDescription>
+   681→                </DialogHeader>
+   682→                <form onSubmit={handleBookSubmit} className="space-y-4">
+   683→                  <div className="space-y-2">
+   684→                    <Label htmlFor="book-title">
+   685→                      عنوان کتاب <span className="text-destructive">*</span>
+   686→                    </Label>
+   687→                    <Input
+   688→                      id="book-title"
+   689→                      value={bookForm.title}
+   690→                      onChange={(e) =>
+   691→                        setBookForm((prev) => ({ ...prev, title: e.target.value }))
+   692→                      }
+   693→                      placeholder="عنوان کتاب را وارد کنید..."
+   694→                      disabled={bookSubmitting}
+   695→                    />
+   696→                  </div>
+   697→
+   698→                  <div className="space-y-2">
+   699→                    <Label htmlFor="book-author">نویسنده</Label>
+   700→                    <Input
+   701→                      id="book-author"
+   702→                      value={bookForm.author}
+   703→                      onChange={(e) =>
+   704→                        setBookForm((prev) => ({ ...prev, author: e.target.value }))
+   705→                      }
+   706→                      placeholder="نام نویسنده..."
+   707→                      disabled={bookSubmitting}
+   708→                    />
+   709→                  </div>
+   710→
+   711→                  <div className="space-y-2">
+   712→                    <Label>دسته‌بندی</Label>
+   713→                    <Select
+   714→                      value={bookForm.categoryId}
+   715→                      onValueChange={(value) =>
+   716→                        setBookForm((prev) => ({ ...prev, categoryId: value }))
+   717→                      }
+   718→                      disabled={bookSubmitting}
+   719→                    >
+   720→                      <SelectTrigger className="w-full">
+   721→                        <SelectValue placeholder="انتخاب دسته‌بندی..." />
+   722→                      </SelectTrigger>
+   723→                      <SelectContent>
+   724→                        <SelectItem value="none">بدون دسته‌بندی</SelectItem>
+   725→                        {categories.map((cat) => (
+   726→                          <SelectItem key={cat.id} value={cat.id}>
+   727→                            {cat.name}
+   728→                          </SelectItem>
+   729→                        ))}
+   730→                      </SelectContent>
+   731→                    </Select>
+   732→                  </div>
+   733→
+   734→                  <div className="space-y-2">
+   735→                    <Label htmlFor="book-description">توضیحات</Label>
+   736→                    <Textarea
+   737→                      id="book-description"
+   738→                      value={bookForm.description}
+   739→                      onChange={(e) =>
+   740→                        setBookForm((prev) => ({
+   741→                          ...prev,
+   742→                          description: e.target.value,
+   743→                        }))
+   744→                      }
+   745→                      placeholder="توضیح مختصری درباره کتاب..."
+   746→                      rows={3}
+   747→                      disabled={bookSubmitting}
+   748→                    />
+   749→                  </div>
+   750→
+   751→                  <div className="space-y-2">
+   752→                    <Label htmlFor="book-content">
+   753→                      متن کتاب <span className="text-destructive">*</span>
+   754→                    </Label>
+   755→                    <Textarea
+   756→                      id="book-content"
+   757→                      value={bookForm.content}
+   758→                      onChange={(e) =>
+   759→                        setBookForm((prev) => ({ ...prev, content: e.target.value }))
+   760→                      }
+   761→                      placeholder="متن کتاب را اینجا وارد کنید..."
+   762→                      rows={10}
+   763→                      className="min-h-[200px]"
+   764→                      disabled={bookSubmitting}
+   765→                    />
+   766→                  </div>
+   767→
+   768→                  <div className="space-y-3">
+   769→                    <Label>رنگ جلد</Label>
+   770→                    <div className="flex flex-wrap gap-2">
+   771→                      {PRESET_COLORS.map((color) => (
+   772→                        <button
+   773→                          key={color}
+   774→                          type="button"
+   775→                          className={`h-8 w-8 rounded-full border-2 transition-all hover:scale-110 ${
+   776→                            bookForm.coverColor === color
+   777→                              ? "border-foreground scale-110 ring-2 ring-ring ring-offset-2 ring-offset-background"
+   778→                              : "border-transparent"
+   779→                          }`}
+   780→                          style={{ backgroundColor: color }}
+   781→                          onClick={() =>
+   782→                            setBookForm((prev) => ({ ...prev, coverColor: color }))
+   783→                          }
+   784→                          disabled={bookSubmitting}
+   785→                          aria-label={color}
+   786→                        />
+   787→                      ))}
+   788→                    </div>
+   789→                    <div className="flex items-center gap-3">
+   790→                      <Label htmlFor="book-color" className="text-sm text-muted-foreground">
+   791→                        یا رنگ دلخواه:
+   792→                      </Label>
+   793→                      <input
+   794→                        id="book-color"
+   795→                        type="color"
+   796→                        value={bookForm.coverColor}
+   797→                        onChange={(e) =>
+   798→                          setBookForm((prev) => ({ ...prev, coverColor: e.target.value }))
+   799→                        }
+   800→                        className="h-8 w-12 cursor-pointer rounded border"
+   801→                        disabled={bookSubmitting}
+   802→                      />
+   803→                    </div>
+   804→                  </div>
+   805→
+   806→                  <DialogFooter className="gap-2 pt-2">
+   807→                    <Button
+   808→                      type="button"
+   809→                      variant="outline"
+   810→                      onClick={() => setBookDialogOpen(false)}
+   811→                      disabled={bookSubmitting}
+   812→                    >
+   813→                      انصراف
+   814→                    </Button>
+   815→                    <Button type="submit" disabled={bookSubmitting}>
+   816→                      {bookSubmitting ? (
+   817→                        <>
+   818→                          <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+   819→                          در حال ذخیره...
+   820→                        </>
+   821→                      ) : editingBook ? (
+   822→                        "ذخیره تغییرات"
+   823→                      ) : (
+   824→                        "افزودن کتاب"
+   825→                      )}
+   826→                    </Button>
+   827→                  </DialogFooter>
+   828→                </form>
+   829→              </DialogContent>
+   830→            </Dialog>
+   831→
+   832→            <AlertDialog open={!!deleteBookId} onOpenChange={(open) => !open && setDeleteBookId(null)}>
+   833→              <AlertDialogContent>
+   834→                <AlertDialogHeader>
+   835→                  <AlertDialogTitle>حذف کتاب</AlertDialogTitle>
+   836→                  <AlertDialogDescription>
+   837→                    آیا مطمئن هستید که می‌خواهید این کتاب را حذف کنید؟ این عملیات قابل بازگشت
+   838→                    نیست.
+   839→                  </AlertDialogDescription>
+   840→                </AlertDialogHeader>
+   841→                <AlertDialogFooter>
+   842→                  <AlertDialogCancel disabled={deleteBookLoading}>انصراف</AlertDialogCancel>
+   843→                  <AlertDialogAction
+   844→                    onClick={handleDeleteBook}
+   845→                    disabled={deleteBookLoading}
+   846→                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+   847→                  >
+   848→                    {deleteBookLoading ? (
+   849→                      <>
+   850→                        <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+   851→                        در حال حذف...
+   852→                      </>
+   853→                    ) : (
+   854→                      "حذف"
+   855→                    )}
+   856→                  </AlertDialogAction>
+   857→                </AlertDialogFooter>
+   858→              </AlertDialogContent>
+   859→            </AlertDialog>
+   860→
+   861→            <AlertDialog open={!!deleteCatId} onOpenChange={(open) => !open && setDeleteCatId(null)}>
+   862→              <AlertDialogContent>
+   863→                <AlertDialogHeader>
+   864→                  <AlertDialogTitle>حذف دسته‌بندی</AlertDialogTitle>
+   865→                  <AlertDialogDescription>
+   866→                    آیا مطمئن هستید که می‌خواهید این دسته‌بندی را حذف کنید؟ کتاب‌های متصل به این
+   867→                    دسته‌بندی بدون دسته‌بندی خواهند شد.
+   868→                  </AlertDialogDescription>
+   869→                </AlertDialogHeader>
+   870→                <AlertDialogFooter>
+   871→                  <AlertDialogCancel disabled={deleteCatLoading}>انصراف</AlertDialogCancel>
+   872→                  <AlertDialogAction
+   873→                    onClick={handleDeleteCategory}
+   874→                    disabled={deleteCatLoading}
+   875→                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+   876→                  >
+   877→                    {deleteCatLoading ? (
+   878→                      <>
+   879→                        <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+   880→                        در حال حذف...
+   881→                      </>
+   882→                    ) : (
+   883→                      "حذف"
+   884→                    )}
+   885→                  </AlertDialogAction>
+   886→                </AlertDialogFooter>
+   887→              </AlertDialogContent>
+   888→            </AlertDialog>
+   889→          </motion.div>
+   890→        )}
+   891→      </AnimatePresence>
+   892→    </div>
+   893→  );
+   894→}
+   895→

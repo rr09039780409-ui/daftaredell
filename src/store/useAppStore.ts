@@ -30,6 +30,7 @@ interface AppState {
   bookContent: string;
   categories: { id: string; name: string; _count: { books: number } }[];
   searchQuery: string;
+  selectedCategoryId: string | null;
   isAdmin: boolean;
   isSeeded: boolean;
   readerSettings: ReaderSettings;
@@ -40,6 +41,7 @@ interface AppState {
   setBookContent: (content: string) => void;
   setCategories: (categories: AppState["categories"]) => void;
   setSearchQuery: (query: string) => void;
+  setSelectedCategoryId: (id: string | null) => void;
   setAdmin: (isAdmin: boolean) => void;
   setSeeded: (seeded: boolean) => void;
   updateReaderSettings: (settings: Partial<ReaderSettings>) => void;
@@ -64,6 +66,7 @@ export const useAppStore = create<AppState>()(
       bookContent: "",
       categories: [],
       searchQuery: "",
+      selectedCategoryId: null,
       isAdmin: false,
       isSeeded: false,
       readerSettings: {
@@ -79,6 +82,7 @@ export const useAppStore = create<AppState>()(
       setBookContent: (content) => set({ bookContent: content }),
       setCategories: (categories) => set({ categories }),
       setSearchQuery: (searchQuery) => set({ searchQuery }),
+      setSelectedCategoryId: (selectedCategoryId) => set({ selectedCategoryId }),
       setAdmin: (isAdmin) => set({ isAdmin }),
       setSeeded: (isSeeded) => set({ isSeeded }),
       updateReaderSettings: (settings) =>

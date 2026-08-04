@@ -5,6 +5,7 @@ import { BookOpen } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore, type Book } from "@/store/useAppStore";
+import { cacheBookOffline } from "@/components/BookGrid";
 
 interface BookCardProps {
   book: Book;
@@ -20,9 +21,28 @@ export default function BookCard({ book }: BookCardProps) {
       if (res.ok) {
         const data = await res.json();
         setBookContent(data.content || "");
+        /* Cache for offline */
+        cacheBookOffline(book, data.content || "");
       }
     } catch {
-      setBookContent("");
+      /* Try offline cache */
+      try {
+        const dbReq = indexedDB.open("bookshelf-offline", 1);
+        dbReq.onsuccess = () => {
+          const db = dbReq.result;
+          const tx = db.transaction("books", "readonly");
+          const req = tx.objectStore("books").get(book.id);
+          req.onsuccess = () => {
+            if (req.result?.content) {
+              setBookContent(req.result.content);
+            }
+            db.close();
+          };
+          req.onerror = () => db.close();
+        };
+      } catch {
+        setBookContent("");
+      }
     }
     setView("reader");
   };

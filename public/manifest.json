@@ -1,0 +1,20 @@
+{
+  "name": "کتابخانه - کتاب‌خوان آنلاین",
+  "short_name": "کتابخانه",
+  "description": "کتاب‌خوان آنلاین فارسی با حفاظت متن و قابلیت آفلاین",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6366f1",
+  "dir": "rtl",
+  "lang": "fa",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

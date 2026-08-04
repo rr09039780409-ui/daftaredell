@@ -1,27 +1,26 @@
+# Worklog - Bookshelf Reader App
+
 ---
 Task ID: 1
-Agent: Main Agent
-Task: Build Persian book reader web application (Bookshelf)
+Agent: Main
+Task: Complete the Persian Book Reader Application (Model 1 Hybrid)
 
 Work Log:
-- Analyzed requirements and proposed hybrid architecture (online management + offline reading)
-- Initialized Next.js 16 project with fullstack-dev skill
-- Designed and pushed Prisma schema (Book, Category, AppSetting models)
-- Created AES-256-GCM encryption utility for book content protection
-- Built API routes: /api/books (CRUD), /api/books/[id], /api/auth, /api/categories, /api/seed
-- Created Zustand store with persist middleware for app state management
-- Built Header component with search, navigation tabs, and admin toggle
-- Built BookCard and BookGrid components with search filtering and animations
-- Built BookReader component with Canvas-based text rendering for content protection
-- Built AdminPanel component with login, book CRUD, and category management
-- Updated layout for RTL support with Vazirmatn font
-- Added print protection CSS
-- Fixed multiple integration issues (export mismatches, Prisma include+select, seed upsert)
-- Verified with Agent Browser: library view, reader view, admin panel all working
+- Reviewed existing codebase from previous session (Prisma schema, API routes, components already built)
+- Added `selectedCategoryId` state to useAppStore for category filtering
+- Updated BookGrid with category filter bar (horizontal scrollable buttons)
+- Added content search via `/api/books?q=` endpoint (decrypts and searches inside book content)
+- Updated BookCard to cache book content in IndexedDB for offline reading
+- Created Service Worker (`/public/sw.js`) with network-first for API, cache-first for static assets
+- Created PWA manifest (`/public/manifest.json`) with RTL/Farsi config
+- Registered Service Worker in layout.tsx
+- Added backup API (`/api/backup`) with Export (GET) and Import (POST)
+- Added Import/Export tab to AdminPanel with download/upload UI
+- Enhanced anti-copy protection (global copy/drag/selectstart prevention + Canvas rendering)
+- Fixed JSX comment syntax errors in BookGrid
+- Verified all 9 checks pass via Agent Browser (RTL, grid, canvas reader, search, filters, toolbar)
 
 Stage Summary:
-- Fully functional Persian book reader application
-- 3 sample books seeded (دیوان حافظ, بوشهر و دشتستان, چگونه با مردم رفتار کنیم)
-- Canvas-based text rendering prevents copy/paste
-- Admin password: admin
-- All lint checks passing
+- All features working: book listing, Canvas reader, themes, font controls, search (title + content), category filters, admin panel, backup import/export, PWA offline support
+- Default admin password: "admin"
+- App verified at http://localhost:3000 with zero console errors

@@ -1,9 +1,39 @@
 import { db } from "@/lib/db";
-import { encrypt, hashPassword } from "@/lib/encryption";
+import { encrypt, decrypt, hashPassword } from "@/lib/encryption";
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    /* Content search mode */
+    const q = req.nextUrl.searchParams.get("q");
+    if (q && q.trim()) {
+      const query = q.trim().toLowerCase();
+      const allBooks = await db.book.findMany({
+        select: {
+          id: true,
+          title: true,
+          author: true,
+          description: true,
+          coverColor: true,
+          categoryId: true,
+          category: { select: { id: true, name: true } },
+          createdAt: true,
+          updatedAt: true,
+          content: true,
+        },
+      });
+
+      const results = allBooks
+        .filter((book) => {
+          const decrypted = decrypt(book.content);
+          return decrypted.toLowerCase().includes(query);
+        })
+        .map(({ content: _, ...rest }) => rest);
+
+      return NextResponse.json(results);
+    }
+
+    /* Normal list mode */
     const books = await db.book.findMany({
       orderBy: { createdAt: "desc" },
       select: {

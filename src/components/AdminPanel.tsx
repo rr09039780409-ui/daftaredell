@@ -12,6 +12,8 @@ import {
   ShieldCheck,
   Loader2,
   LogOut,
+  Download,
+  Upload,
 } from "lucide-react";
 import { useAppStore, type Book } from "@/store/useAppStore";
 import { toast } from "@/hooks/use-toast";
@@ -487,7 +489,7 @@ export default function AdminPanel() {
             <Separator className="mb-6" />
 
             <Tabs defaultValue="books" dir="rtl">
-              <TabsList className="mb-6 grid w-full grid-cols-2">
+              <TabsList className="mb-6 grid w-full grid-cols-3">
                 <TabsTrigger value="books" className="gap-2">
                   <BookOpen className="h-4 w-4" />
                   کتاب‌ها
@@ -495,6 +497,10 @@ export default function AdminPanel() {
                 <TabsTrigger value="categories" className="gap-2">
                   <FolderOpen className="h-4 w-4" />
                   دسته‌بندی‌ها
+                </TabsTrigger>
+                <TabsTrigger value="backup" className="gap-2">
+                  <Download className="h-4 w-4" />
+                  پشتیبان
                 </TabsTrigger>
               </TabsList>
 
@@ -663,6 +669,117 @@ export default function AdminPanel() {
                       ))}
                     </div>
                   )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="backup">
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="mb-2 text-lg font-semibold">پشتیبان‌گیری و بازیابی</h2>
+                    <p className="text-sm text-muted-foreground">
+                      از تمام کتاب‌ها و دسته‌بندی‌ها پشتیبان بگیرید یا از فایل پشتیبان بازیابی کنید
+                    </p>
+                  </div>
+
+                  <Separator />
+
+                  {/* Export */}
+                  <Card className="p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
+                        <Download className="h-5 w-5 text-emerald-600" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold">خروجی گرفتن (Export)</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          تمام کتاب‌ها به همراه محتوا و دسته‌بندی‌ها در یک فایل JSON ذخیره می‌شوند.
+                          محتوای کتاب‌ها رمزنگاری‌شده exported می‌شود.
+                        </p>
+                        <Button
+                          className="mt-3 gap-2"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`/api/backup?pw=${encodeURIComponent(adminPw)}`);
+                              if (res.ok) {
+                                const data = await res.json();
+                                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `bookshelf-backup-${new Date().toISOString().slice(0,10)}.json`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                                toast({ title: 'خروجی ایجاد شد', description: 'فایل پشتیبان دانلود شد' });
+                              } else {
+                                const err = await res.json();
+                                toast({ title: 'خطا', description: err.error || 'خطا در ایجاد خروجی', variant: 'destructive' });
+                              }
+                            } catch {
+                              toast({ title: 'خطا', description: 'خطا در ارتباط با سرور', variant: 'destructive' });
+                            }
+                          }}
+                        >
+                          <Download className="h-4 w-4" />
+                          دانلود فایل پشتیبان
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Import */}
+                  <Card className="p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10">
+                        <Upload className="h-5 w-5 text-amber-600" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold">وارد کردن (Import)</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          فایل پشتیبان JSON را انتخاب کنید. کتاب‌های تکراری به‌روزرسانی می‌شوند.
+                        </p>
+                        <div className="mt-3 flex items-center gap-3">
+                          <label className="cursor-pointer">
+                            <input
+                              type="file"
+                              accept=".json"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                try {
+                                  const text = await file.text();
+                                  const data = JSON.parse(text);
+                                  const res = await fetch(`/api/backup?pw=${encodeURIComponent(adminPw)}`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(data),
+                                  });
+                                  const result = await res.json();
+                                  if (res.ok) {
+                                    toast({ title: 'وارد کردن موفق', description: result.message });
+                                    await refreshBooks();
+                                    await refreshCategories();
+                                  } else {
+                                    toast({ title: 'خطا', description: result.error || 'خطا در وارد کردن', variant: 'destructive' });
+                                  }
+                                } catch {
+                                  toast({ title: 'خطا', description: 'فایل نامعتبر است', variant: 'destructive' });
+                                }
+                                e.target.value = '';
+                              }}
+                            />
+                            <Button variant="outline" size="sm" className="gap-2" asChild>
+                              <span>
+                                <Upload className="h-4 w-4" />
+                                انتخاب فایل پشتیبان
+                              </span>
+                            </Button>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
                 </div>
               </TabsContent>
             </Tabs>
