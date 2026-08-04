@@ -244,12 +244,35 @@ export default function BookReader() {
      Scroll tracking
      ═══════════════════════════════════════════════════════════ */
 
+  const selectedBook = useAppStore((s) => s.selectedBook);
+
+  /* Bookmark: restore scroll position after canvas is painted */
+  const bookmarkRestoredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedBook || !bookContent) return;
+    const bookId = selectedBook.id;
+    if (bookmarkRestoredRef.current === bookId) return;
+    bookmarkRestoredRef.current = bookId;
+
+    const saved = localStorage.getItem(`bookmark-${bookId}`);
+    if (saved) {
+      const pos = parseFloat(saved);
+      const timer = setTimeout(() => {
+        wrapperRef.current?.scrollTo({ top: pos });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedBook?.id, bookContent]);
+
   const handleScroll = useCallback(() => {
     const el = wrapperRef.current;
     if (!el) return;
     const max = el.scrollHeight - el.clientHeight;
     setScrollPercent(max > 0 ? Math.round((el.scrollTop / max) * 100) : 0);
-  }, []);
+    if (selectedBook) {
+      localStorage.setItem(`bookmark-${selectedBook.id}`, String(el.scrollTop));
+    }
+  }, [selectedBook]);
 
   /* ═══════════════════════════════════════════════════════════
      Settings handlers

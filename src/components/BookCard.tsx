@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore, type Book } from "@/store/useAppStore";
@@ -9,6 +9,11 @@ import { cacheBookOffline } from "@/components/BookGrid";
 
 interface BookCardProps {
   book: Book;
+}
+
+function isNewBook(createdAt: string): boolean {
+  const diff = Date.now() - new Date(createdAt).getTime();
+  return diff < 7 * 24 * 60 * 60 * 1000; // 7 days
 }
 
 export default function BookCard({ book }: BookCardProps) {
@@ -61,10 +66,17 @@ export default function BookCard({ book }: BookCardProps) {
       >
         {/* Colored top section with BookOpen icon */}
         <div
-          className="flex h-40 w-full items-center justify-center"
+          className="relative flex h-40 w-full items-center justify-center"
           style={{ backgroundColor: book.coverColor }}
         >
           <BookOpen className="h-16 w-16 text-white/90" strokeWidth={1.5} />
+          {/* New badge */}
+          {isNewBook(book.createdAt) && (
+            <span className="absolute top-3 left-3 flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+              <Sparkles className="size-3" />
+              جدید
+            </span>
+          )}
         </div>
 
         {/* Book info section */}

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { ThemeProvider } from "next-themes";
 
 export const metadata: Metadata = {
   title: "کتابخانه | کتاب‌خوان آنلاین",
@@ -40,6 +41,22 @@ function ServiceWorkerRegister() {
   );
 }
 
+function AntiCopyScript() {
+  return (
+    <script
+      dangerouslySetInnerHTML={{
+        __html: `
+          document.addEventListener('copy', function(e) { e.preventDefault(); });
+          document.addEventListener('selectstart', function(e) {
+            if (e.target.tagName === 'CANVAS') e.preventDefault();
+          });
+          document.addEventListener('dragstart', function(e) { e.preventDefault(); });
+        `,
+      }}
+    />
+  );
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -53,21 +70,18 @@ export default function RootLayout({
           rel="stylesheet"
         />
         <ServiceWorkerRegister />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              document.addEventListener('copy', function(e) { e.preventDefault(); });
-              document.addEventListener('selectstart', function(e) {
-                if (e.target.tagName === 'CANVAS') e.preventDefault();
-              });
-              document.addEventListener('dragstart', function(e) { e.preventDefault(); });
-            `,
-          }}
-        />
+        <AntiCopyScript />
       </head>
       <body className="antialiased bg-background text-foreground" style={{ fontFamily: 'Vazirmatn, Tahoma, "Segoe UI", sans-serif' }}>
-        {children}
-        <Toaster />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

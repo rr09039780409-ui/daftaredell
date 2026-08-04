@@ -32,3 +32,21 @@ model AppSetting {
   key   String @unique
   value String
 }
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @default("")
+  type      String   @default("general") /* general | quote | event | tip | newbook */
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  bookId    String
+  scrollY   Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

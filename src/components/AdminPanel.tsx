@@ -14,6 +14,11 @@ import {
   LogOut,
   Download,
   Upload,
+  Bell,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Megaphone,
 } from "lucide-react";
 import { useAppStore, type Book } from "@/store/useAppStore";
 import { toast } from "@/hooks/use-toast";
@@ -489,18 +494,26 @@ export default function AdminPanel() {
             <Separator className="mb-6" />
 
             <Tabs defaultValue="books" dir="rtl">
-              <TabsList className="mb-6 grid w-full grid-cols-3">
-                <TabsTrigger value="books" className="gap-2">
+              <TabsList className="mb-6 grid w-full grid-cols-5">
+                <TabsTrigger value="books" className="gap-1.5 text-xs sm:text-sm">
                   <BookOpen className="h-4 w-4" />
-                  کتاب‌ها
+                  <span className="hidden sm:inline">کتاب‌ها</span>
                 </TabsTrigger>
-                <TabsTrigger value="categories" className="gap-2">
+                <TabsTrigger value="categories" className="gap-1.5 text-xs sm:text-sm">
                   <FolderOpen className="h-4 w-4" />
-                  دسته‌بندی‌ها
+                  <span className="hidden sm:inline">دسته‌بندی</span>
                 </TabsTrigger>
-                <TabsTrigger value="backup" className="gap-2">
+                <TabsTrigger value="announcements" className="gap-1.5 text-xs sm:text-sm">
+                  <Bell className="h-4 w-4" />
+                  <span className="hidden sm:inline">اعلان‌ها</span>
+                </TabsTrigger>
+                <TabsTrigger value="settings" className="gap-1.5 text-xs sm:text-sm">
+                  <KeyRound className="h-4 w-4" />
+                  <span className="hidden sm:inline">تنظیمات</span>
+                </TabsTrigger>
+                <TabsTrigger value="backup" className="gap-1.5 text-xs sm:text-sm">
                   <Download className="h-4 w-4" />
-                  پشتیبان
+                  <span className="hidden sm:inline">پشتیبان</span>
                 </TabsTrigger>
               </TabsList>
 
@@ -670,6 +683,14 @@ export default function AdminPanel() {
                     </div>
                   )}
                 </div>
+              </TabsContent>
+
+              <TabsContent value="announcements">
+                <AnnouncementsTab adminPw={adminPw} />
+              </TabsContent>
+
+              <TabsContent value="settings">
+                <SettingsTab adminPw={adminPw} />
               </TabsContent>
 
               <TabsContent value="backup">
@@ -1006,6 +1027,312 @@ export default function AdminPanel() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Announcements Tab
+   ═══════════════════════════════════════════════════════════════ */
+const ANN_TYPES = [
+  { value: "general", label: "اعلان" },
+  { value: "quote", label: "جمله تاکیدی" },
+  { value: "event", label: "مناسبت" },
+  { value: "tip", label: "نکته" },
+  { value: "newbook", label: "کتاب جدید" },
+] as const;
+
+function AnnouncementsTab({ adminPw }: { adminPw: string }) {
+  const [items, setItems] = useState<{ id: string; title: string; type: string; content: string; active: boolean; createdAt: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [type, setType] = useState("general");
+  const [submitting, setSubmitting] = useState(false);
+
+  const fetchItems = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/announcements?admin=1&pw=${encodeURIComponent(adminPw)}`);
+      if (res.ok) {
+        const all = await res.json();
+        if (Array.isArray(all)) setItems(all);
+        else setItems([]);
+      }
+    } catch {
+      /* use empty */
+    } finally {
+      setLoading(false);
+    }
+  }, [adminPw]);
+
+  useEffect(() => { fetchItems(); }, [fetchItems]);
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/announcements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, content, type, adminPassword: adminPw }),
+      });
+      if (res.ok) {
+        toast({ title: "اعلان ایجاد شد" });
+        setTitle(""); setContent(""); setType("general");
+        fetchItems();
+      } else {
+        const d = await res.json();
+        toast({ title: "خطا", description: d.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "خطا", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleActive = async (id: string, active: boolean) => {
+    try {
+      await fetch(`/api/announcements/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: !active, adminPassword: adminPw }),
+      });
+      fetchItems();
+    } catch {}
+  };
+
+  const deleteItem = async (id: string) => {
+    try {
+      await fetch(`/api/announcements/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminPassword: adminPw }),
+      });
+      fetchItems();
+      toast({ title: "اعلان حذف شد" });
+    } catch {
+      toast({ title: "خطا", variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="mb-2 text-lg font-semibold">اعلان‌ها و پیام‌ها</h2>
+        <p className="text-sm text-muted-foreground">
+          پیام‌ها، جملات تاکیدی، مناسبت‌ها و نکات را برای کاربران ارسال کنید
+        </p>
+      </div>
+
+      <Separator />
+
+      {/* Add form */}
+      <Card className="p-4">
+        <form onSubmit={handleAdd} className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <Label className="mb-1.5 block text-sm">متن اعلان</Label>
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="مثلاً: به مناسبت ماه مهر..."
+                disabled={submitting}
+              />
+            </div>
+            <div className="w-full sm:w-40">
+              <Label className="mb-1.5 block text-sm">نوع</Label>
+              <Select dir="rtl" value={type} onValueChange={setType} disabled={submitting}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ANN_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" disabled={submitting || !title.trim()} className="gap-2 shrink-0">
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              ارسال
+            </Button>
+          </div>
+          <Textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="توضیحات بیشتر (اختیاری)..."
+            rows={2}
+            disabled={submitting}
+          />
+        </form>
+      </Card>
+
+      <Separator />
+
+      {/* List */}
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-10 text-center">
+          <Megaphone className="mb-3 h-10 w-10 text-muted-foreground/40" />
+          <p className="text-muted-foreground text-sm">اعلانی ایجاد نشده است</p>
+        </div>
+      ) : (
+        <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+          {items.map((item, i) => (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.04 }}
+            >
+              <Card className="overflow-hidden transition-shadow hover:shadow-md">
+                <CardContent className="flex items-center gap-3 p-3">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                    item.active ? "bg-primary/10" : "bg-muted"
+                  }`}>
+                    <Megaphone className={`h-4 w-4 ${item.active ? "text-primary" : "text-muted-foreground"}`} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className={`truncate text-sm font-medium ${!item.active && "text-muted-foreground line-through"}`}>
+                        {item.title}
+                      </p>
+                      <Badge variant="outline" className="shrink-0 text-[10px]">
+                        {ANN_TYPES.find((t) => t.value === item.type)?.label || item.type}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toggleActive(item.id, item.active)}>
+                      {item.active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => deleteItem(item.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Settings Tab (Change Password)
+   ═══════════════════════════════════════════════════════════════ */
+function SettingsTab({ adminPw }: { adminPw: string }) {
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleChangePw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPw !== confirmPw) {
+      toast({ title: "خطا", description: "رمز جدید و تکرار آن مطابقت ندارند", variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast({ title: "موفق", description: data.message });
+        setCurrentPw(""); setNewPw(""); setConfirmPw("");
+      } else {
+        toast({ title: "خطا", description: data.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "خطا", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="mb-2 text-lg font-semibold">تنظیمات</h2>
+        <p className="text-sm text-muted-foreground">تغییر رمز عبور ادمین</p>
+      </div>
+      <Separator />
+
+      <Card className="p-5">
+        <div className="flex items-start gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <KeyRound className="h-5 w-5 text-primary" />
+          </div>
+          <form onSubmit={handleChangePw} className="flex-1 space-y-4">
+            <h3 className="font-semibold">تغییر رمز عبور</h3>
+            <div className="space-y-2">
+              <Label htmlFor="current-pw">رمز فعلی</Label>
+              <div className="relative">
+                <Input
+                  id="current-pw"
+                  type={showCurrent ? "text" : "password"}
+                  value={currentPw}
+                  onChange={(e) => setCurrentPw(e.target.value)}
+                  placeholder="رمز فعلی..."
+                  disabled={loading}
+                  className="pl-10"
+                />
+                <button
+                  type="button"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowCurrent(!showCurrent)}
+                >
+                  {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-pw">رمز جدید</Label>
+              <div className="relative">
+                <Input
+                  id="new-pw"
+                  type={showNew ? "text" : "password"}
+                  value={newPw}
+                  onChange={(e) => setNewPw(e.target.value)}
+                  placeholder="رمز جدید (حداقل ۴ کاراکتر)..."
+                  disabled={loading}
+                  className="pl-10"
+                />
+                <button
+                  type="button"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowNew(!showNew)}
+                >
+                  {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-pw">تکرار رمز جدید</Label>
+              <Input
+                id="confirm-pw"
+                type="password"
+                value={confirmPw}
+                onChange={(e) => setConfirmPw(e.target.value)}
+                placeholder="تکرار رمز جدید..."
+                disabled={loading}
+              />
+            </div>
+            <Button type="submit" disabled={loading || !currentPw || !newPw || !confirmPw}>
+              {loading ? <><Loader2 className="ml-2 h-4 w-4 animate-spin" />در حال تغییر...</> : "تغییر رمز عبور"}
+            </Button>
+          </form>
+        </div>
+      </Card>
     </div>
   );
 }
