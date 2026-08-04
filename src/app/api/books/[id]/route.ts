@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { decrypt, encrypt, hashPassword } from "@/lib/encryption";
+import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -33,6 +34,8 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const blocked = adminGuard();
+  if (blocked) return blocked;
   try {
     const { id } = await params;
     const body = await req.json();
@@ -76,6 +79,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const blocked = adminGuard();
+  if (blocked) return blocked;
   try {
     const { id } = await params;
     const body = await req.json();

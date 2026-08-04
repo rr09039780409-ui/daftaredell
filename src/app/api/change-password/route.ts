@@ -1,8 +1,11 @@
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/encryption";
+import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
+  const blocked = adminGuard();
+  if (blocked) return blocked;
   try {
     const { currentPassword, newPassword } = await req.json();
 

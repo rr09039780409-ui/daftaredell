@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { encrypt, decrypt, hashPassword } from "@/lib/encryption";
+import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -170,6 +171,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const blocked = adminGuard();
+  if (blocked) return blocked;
   try {
     const body = await req.json();
     const { title, author, categoryId, description, content, coverColor, adminPassword } = body;

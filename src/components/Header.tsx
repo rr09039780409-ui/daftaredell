@@ -31,6 +31,8 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
 import { useEffect, useState, useMemo } from "react";
 
+const HIDE_ADMIN = process.env.NEXT_PUBLIC_HIDE_ADMIN === "true";
+
 interface AnnouncementItem {
   id: string;
   title: string;
@@ -247,7 +249,7 @@ export function Header() {
                     </TooltipContent>
                   </Tooltip>
 
-                  {isAdmin && (
+                  {isAdmin && !HIDE_ADMIN && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -318,37 +320,39 @@ export function Header() {
             </Tooltip>
 
             {/* Admin toggle */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={isAdmin ? "default" : "outline"}
-                  size="icon"
-                  onClick={() => setAdmin(!isAdmin)}
-                  aria-label={isAdmin ? "خروج از حالت مدیریت" : "ورود به حالت مدیریت"}
-                  className="relative"
-                >
-                  <Shield
-                    className={cn(
-                      "size-4 transition-colors",
-                      isAdmin && "text-primary-foreground"
+            {!HIDE_ADMIN && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={isAdmin ? "default" : "outline"}
+                    size="icon"
+                    onClick={() => setAdmin(!isAdmin)}
+                    aria-label={isAdmin ? "خروج از حالت مدیریت" : "ورود به حالت مدیریت"}
+                    className="relative"
+                  >
+                    <Shield
+                      className={cn(
+                        "size-4 transition-colors",
+                        isAdmin && "text-primary-foreground"
+                      )}
+                    />
+                    {isAdmin && (
+                      <motion.span
+                        layoutId="admin-indicator"
+                        className="absolute -top-1 -left-1 flex size-2.5"
+                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      >
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                        <span className="relative inline-flex size-2.5 rounded-full bg-primary" />
+                      </motion.span>
                     )}
-                  />
-                  {isAdmin && (
-                    <motion.span
-                      layoutId="admin-indicator"
-                      className="absolute -top-1 -left-1 flex size-2.5"
-                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                    >
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                      <span className="relative inline-flex size-2.5 rounded-full bg-primary" />
-                    </motion.span>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p>{isAdmin ? "خروج از حالت مدیریت" : "ورود به حالت مدیریت"}</p>
-              </TooltipContent>
-            </Tooltip>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p>{isAdmin ? "خروج از حالت مدیریت" : "ورود به حالت مدیریت"}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
       </motion.header>

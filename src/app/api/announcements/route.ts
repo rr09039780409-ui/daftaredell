@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/encryption";
+import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
 
 /* GET: all items (admin) or only active (public) */
@@ -34,6 +35,8 @@ export async function GET(req: NextRequest) {
 
 /* POST: admin only */
 export async function POST(req: NextRequest) {
+  const blocked = adminGuard();
+  if (blocked) return blocked;
   try {
     const body = await req.json();
     const { title, content, type, adminPassword } = body;

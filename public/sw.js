@@ -52,8 +52,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('.css') ||
     url.pathname.endsWith('.js') ||
     url.pathname.endsWith('.woff2') ||
-    url.pathname.endsWith('.ttf') ||
-    url.pathname.includes('vazirmatn')
+    url.pathname.endsWith('.ttf')
   ) {
     event.respondWith(
       caches.match(event.request).then((cached) => {

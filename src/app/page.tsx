@@ -5,8 +5,16 @@ import { useAppStore } from "@/store/useAppStore";
 import { Header } from "@/components/Header";
 import BookGrid from "@/components/BookGrid";
 import BookReader from "@/components/BookReader";
-import AdminPanel from "@/components/AdminPanel";
 import { AnimatePresence, motion } from "framer-motion";
+
+const HIDE_ADMIN = process.env.NEXT_PUBLIC_HIDE_ADMIN === "true";
+
+/* Conditional import for AdminPanel */
+let AdminPanel: typeof import("@/components/AdminPanel").default | null = null;
+if (!HIDE_ADMIN) {
+  /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+  AdminPanel = require("@/components/AdminPanel").default;
+}
 
 export default function HomePage() {
   const { view, setBooks, setCategories, isSeeded, setSeeded } = useAppStore();
@@ -73,7 +81,7 @@ export default function HomePage() {
               <BookReader />
             </motion.div>
           )}
-          {view === "admin" && (
+          {view === "admin" && !HIDE_ADMIN && AdminPanel && (
             <motion.div
               key="admin"
               initial={{ opacity: 0, x: -20 }}

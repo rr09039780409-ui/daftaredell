@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET() {
@@ -15,6 +16,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const blocked = adminGuard();
+  if (blocked) return blocked;
   try {
     const { name, adminPassword } = await req.json();
 
