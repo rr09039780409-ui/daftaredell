@@ -34,6 +34,7 @@ interface AppState {
   isAdmin: boolean;
   isSeeded: boolean;
   readerSettings: ReaderSettings;
+  scrollToLine: number | null;
 
   setView: (view: AppView) => void;
   setBooks: (books: Book[]) => void;
@@ -45,6 +46,7 @@ interface AppState {
   setAdmin: (isAdmin: boolean) => void;
   setSeeded: (seeded: boolean) => void;
   updateReaderSettings: (settings: Partial<ReaderSettings>) => void;
+  setScrollToLine: (line: number | null) => void;
 }
 
 const THEME_CONFIGS: Record<ReaderTheme, { bg: string; text: string }> = {
@@ -69,6 +71,7 @@ export const useAppStore = create<AppState>()(
       selectedCategoryId: null,
       isAdmin: false,
       isSeeded: false,
+      scrollToLine: null,
       readerSettings: {
         fontSize: 18,
         theme: "light",
@@ -89,6 +92,7 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           readerSettings: { ...state.readerSettings, ...settings },
         })),
+      setScrollToLine: (scrollToLine) => set({ scrollToLine }),
     }),
     {
       name: "bookshelf-storage",

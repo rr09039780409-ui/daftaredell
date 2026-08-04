@@ -177,6 +177,8 @@ export default function BookReader() {
   const bookContent = useAppStore((s) => s.bookContent);
   const readerSettings = useAppStore((s) => s.readerSettings);
   const updateReaderSettings = useAppStore((s) => s.updateReaderSettings);
+  const scrollToLine = useAppStore((s) => s.scrollToLine);
+  const setScrollToLine = useAppStore((s) => s.setScrollToLine);
 
   /* ─── local state ─── */
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -254,15 +256,24 @@ export default function BookReader() {
     if (bookmarkRestoredRef.current === bookId) return;
     bookmarkRestoredRef.current = bookId;
 
-    const saved = localStorage.getItem(`bookmark-${bookId}`);
-    if (saved) {
-      const pos = parseFloat(saved);
-      const timer = setTimeout(() => {
+    const timer = setTimeout(() => {
+      /* Priority 1: scroll to search line */
+      if (scrollToLine !== null && scrollToLine > 0) {
+        const lineSpacing = readerSettings.fontSize * readerSettings.lineHeight;
+        const targetY = scrollToLine * lineSpacing - 100;
+        wrapperRef.current?.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+        setScrollToLine(null);
+        return;
+      }
+      /* Priority 2: restore bookmark */
+      const saved = localStorage.getItem(`bookmark-${bookId}`);
+      if (saved) {
+        const pos = parseFloat(saved);
         wrapperRef.current?.scrollTo({ top: pos });
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [selectedBook?.id, bookContent]);
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [selectedBook?.id, bookContent, scrollToLine, readerSettings.fontSize, readerSettings.lineHeight, setScrollToLine]);
 
   const handleScroll = useCallback(() => {
     const el = wrapperRef.current;
