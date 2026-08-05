@@ -14,11 +14,12 @@ export async function GET(
       .from(books)
       .where(eq(books.id, id))
       .limit(1);
+
     if (!book) {
       return NextResponse.json({ error: "کتاب یافت نشد" }, { status: 404 });
     }
 
-    const decryptedContent = decrypt(book.book    const decryptedContent = decrypt(book.content);
+    const decryptedContent = decrypt(book.content);
 
     let category = null;
     if (book.categoryId) {
