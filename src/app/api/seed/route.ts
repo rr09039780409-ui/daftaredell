@@ -1,4 +1,4 @@
-import { db, books, categories, appSettings, eq, countFn, sql } from "@/lib/db";
+import { db, books, categories, appSettings, eq, count, sql } from "@/lib/db";
 import { encrypt, hashPassword } from "@/lib/encryption";
 import { NextResponse } from "next/server";
 
@@ -122,7 +122,7 @@ export async function POST() {
 
     /* Check existing books */
     const [bookCountResult] = await db
-      .select({ total: countFn(books.id) })
+      .select({ total: count(books.id) })
       .from(books)
       .limit(1);
 

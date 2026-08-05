@@ -1,4 +1,4 @@
-import { db, categories, books, appSettings, eq, asc, sql, countFn } from "@/lib/db";
+import { db, categories, books, appSettings, eq, asc, sql, count } from "@/lib/db";
 import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -9,7 +9,7 @@ export async function GET() {
         id: categories.id,
         name: categories.name,
         createdAt: categories.createdAt,
-        bookCount: countFn(books.id),
+        bookCount: count(books.id),
       })
       .from(categories)
       .leftJoin(books, eq(books.categoryId, categories.id))

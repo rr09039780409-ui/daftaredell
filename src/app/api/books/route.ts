@@ -1,4 +1,4 @@
-import { db, books, categories, eq, desc, count as countFn, sql } from "@/lib/db";
+import { db, books, categories, eq, desc, count as count, sql } from "@/lib/db";
 import { encrypt, decrypt, hashPassword } from "@/lib/encryption";
 import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
