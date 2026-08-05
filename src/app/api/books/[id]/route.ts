@@ -12,7 +12,6 @@ export async function GET(
     const [book] = await db
       .select()
       .from(books)
-      .leftJoin(categories, eq(books.categoryId, categories.id))
       .where(eq(books.id, id))
       .limit(1);
 
@@ -20,21 +19,29 @@ export async function GET(
       return NextResponse.json({ error: "کتاب یافت نشد" }, { status: 404 });
     }
 
-    const decryptedContent = decrypt(book.books.content);
+    const decryptedContent = decrypt(book.content);
+
+    let category: { id: string; name: string; createdAt: string } | null = null;
+    if (book.categoryId) {
+      const [cat] = await db
+        .select()
+        .from(categories)
+        .where(eq(categories.id, book.categoryId))
+        .limit(1);
+      if (cat) category = { id: cat.id, name: cat.name, createdAt: cat.createdAt };
+    }
 
     return NextResponse.json({
-      id: book.books.id,
-      title: book.books.title,
-      author: book.books.author,
-      categoryId: book.books.categoryId,
-      description: book.books.description,
+      id: book.id,
+      title: book.title,
+      author: book.author,
+      categoryId: book.categoryId,
+      description: book.description,
       content: decryptedContent,
-      coverColor: book.books.coverColor,
-      createdAt: book.books.createdAt,
-      updatedAt: book.books.updatedAt,
-      category: book.Category
-        ? { id: book.Category.id, name: book.Category.name, createdAt: book.Category.createdAt }
-        : null,
+      coverColor: book.coverColor,
+      createdAt: book.createdAt,
+      updatedAt: book.updatedAt,
+      category,
     });
   } catch (error) {
     console.error("GET /api/books/[id] error:", error);
