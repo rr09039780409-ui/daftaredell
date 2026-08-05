@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, books, categories, appSettings, eq } from "@/lib/db";
 import { decrypt, encrypt, hashPassword } from "@/lib/encryption";
 import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
@@ -9,20 +9,32 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const book = await db.book.findUnique({
-      where: { id },
-      include: { category: true },
-    });
+    const [book] = await db
+      .select()
+      .from(books)
+      .leftJoin(categories, eq(books.categoryId, categories.id))
+      .where(eq(books.id, id))
+      .limit(1);
 
     if (!book) {
       return NextResponse.json({ error: "کتاب یافت نشد" }, { status: 404 });
     }
 
-    const decryptedContent = decrypt(book.content);
+    const decryptedContent = decrypt(book.books.content);
 
     return NextResponse.json({
-      ...book,
+      id: book.books.id,
+      title: book.books.title,
+      author: book.books.author,
+      categoryId: book.books.categoryId,
+      description: book.books.description,
       content: decryptedContent,
+      coverColor: book.books.coverColor,
+      createdAt: book.books.createdAt,
+      updatedAt: book.books.updatedAt,
+      category: book.Category
+        ? { id: book.Category.id, name: book.Category.name, createdAt: book.Category.createdAt }
+        : null,
     });
   } catch (error) {
     console.error("GET /api/books/[id] error:", error);
@@ -45,7 +57,12 @@ export async function PUT(
       return NextResponse.json({ error: "رمز ادمین الزامی است" }, { status: 401 });
     }
 
-    const setting = await db.appSetting.findUnique({ where: { key: "adminPassword" } });
+    const [setting] = await db
+      .select()
+      .from(appSettings)
+      .where(eq(appSettings.key, "adminPassword"))
+      .limit(1);
+
     if (!setting) {
       return NextResponse.json({ error: "رمز ادمین تنظیم نشده" }, { status: 500 });
     }
@@ -63,10 +80,13 @@ export async function PUT(
     if (coverColor !== undefined) updateData.coverColor = coverColor;
     if (content !== undefined) updateData.content = encrypt(content);
 
-    const book = await db.book.update({
-      where: { id },
-      data: updateData,
-    });
+    updateData.updatedAt = new Date().toISOString();
+
+    const [book] = await db
+      .update(books)
+      .set(updateData)
+      .where(eq(books.id, id))
+      .returning({ id: books.id });
 
     return NextResponse.json({ id: book.id, message: "کتاب با موفقیت به‌روزرسانی شد" });
   } catch (error) {
@@ -90,7 +110,12 @@ export async function DELETE(
       return NextResponse.json({ error: "رمز ادمین الزامی است" }, { status: 401 });
     }
 
-    const setting = await db.appSetting.findUnique({ where: { key: "adminPassword" } });
+    const [setting] = await db
+      .select()
+      .from(appSettings)
+      .where(eq(appSettings.key, "adminPassword"))
+      .limit(1);
+
     if (!setting) {
       return NextResponse.json({ error: "رمز ادمین تنظیم نشده" }, { status: 500 });
     }
@@ -100,7 +125,7 @@ export async function DELETE(
       return NextResponse.json({ error: "رمز ادمین اشتباه است" }, { status: 403 });
     }
 
-    await db.book.delete({ where: { id } });
+    await db.delete(books).where(eq(books.id, id));
 
     return NextResponse.json({ message: "کتاب با موفقیت حذف شد" });
   } catch (error) {

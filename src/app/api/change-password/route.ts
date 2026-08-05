@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, appSettings, eq } from "@/lib/db";
 import { hashPassword } from "@/lib/encryption";
 import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
@@ -17,7 +17,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "رمز جدید باید حداقل ۴ کاراکتر باشد" }, { status: 400 });
     }
 
-    const setting = await db.appSetting.findUnique({ where: { key: "adminPassword" } });
+    const [setting] = await db
+      .select()
+      .from(appSettings)
+      .where(eq(appSettings.key, "adminPassword"))
+      .limit(1);
+
     if (!setting) {
       return NextResponse.json({ error: "تنظیمات یافت نشد" }, { status: 500 });
     }
@@ -28,10 +33,10 @@ export async function POST(req: NextRequest) {
     }
 
     const newHash = hashPassword(newPassword);
-    await db.appSetting.update({
-      where: { key: "adminPassword" },
-      data: { value: newHash },
-    });
+    await db
+      .update(appSettings)
+      .set({ value: newHash })
+      .where(eq(appSettings.key, "adminPassword"));
 
     return NextResponse.json({ message: "رمز عبور با موفقیت تغییر کرد" });
   } catch (error) {

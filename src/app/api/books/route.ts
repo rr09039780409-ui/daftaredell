@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, books, categories, eq, desc, count as countFn, sql } from "@/lib/db";
 import { encrypt, decrypt, hashPassword } from "@/lib/encryption";
 import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
@@ -114,20 +114,22 @@ export async function GET(req: NextRequest) {
     const q = req.nextUrl.searchParams.get("q");
     if (q && q.trim()) {
       const query = q.trim().toLowerCase();
-      const allBooks = await db.book.findMany({
-        select: {
-          id: true,
-          title: true,
-          author: true,
-          description: true,
-          coverColor: true,
-          categoryId: true,
-          category: { select: { id: true, name: true } },
-          createdAt: true,
-          updatedAt: true,
-          content: true,
-        },
-      });
+      const allBooks = await db
+        .select({
+          id: books.id,
+          title: books.title,
+          author: books.author,
+          description: books.description,
+          coverColor: books.coverColor,
+          categoryId: books.categoryId,
+          createdAt: books.createdAt,
+          updatedAt: books.updatedAt,
+          content: books.content,
+          categoryName: categories.name,
+          categoryIdCat: categories.id,
+        })
+        .from(books)
+        .leftJoin(categories, eq(books.categoryId, categories.id));
 
       const results: SearchResult[] = [];
       let totalSnippets = 0;
@@ -137,7 +139,19 @@ export async function GET(req: NextRequest) {
         const decrypted = decrypt(book.content);
         if (!decrypted.toLowerCase().includes(query)) continue;
 
-        const { content: _, ...bookInfo } = book;
+        const bookInfo = {
+          id: book.id,
+          title: book.title,
+          author: book.author,
+          description: book.description,
+          coverColor: book.coverColor,
+          categoryId: book.categoryId,
+          category: book.categoryIdCat && book.categoryName
+            ? { id: book.categoryIdCat, name: book.categoryName }
+            : null,
+          createdAt: book.createdAt,
+          updatedAt: book.updatedAt,
+        };
         const snippets = extractSnippets(decrypted, query);
         if (snippets.length === 0) continue;
 
@@ -149,21 +163,38 @@ export async function GET(req: NextRequest) {
     }
 
     /* Normal list mode */
-    const books = await db.book.findMany({
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        title: true,
-        author: true,
-        description: true,
-        coverColor: true,
-        categoryId: true,
-        category: { select: { id: true, name: true } },
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-    return NextResponse.json(books);
+    const rows = await db
+      .select({
+        id: books.id,
+        title: books.title,
+        author: books.author,
+        description: books.description,
+        coverColor: books.coverColor,
+        categoryId: books.categoryId,
+        createdAt: books.createdAt,
+        updatedAt: books.updatedAt,
+        categoryName: categories.name,
+        categoryIdCat: categories.id,
+      })
+      .from(books)
+      .leftJoin(categories, eq(books.categoryId, categories.id))
+      .orderBy(desc(books.createdAt));
+
+    const result = rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      author: r.author,
+      description: r.description,
+      coverColor: r.coverColor,
+      categoryId: r.categoryId,
+      category: r.categoryIdCat && r.categoryName
+        ? { id: r.categoryIdCat, name: r.categoryName }
+        : null,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }));
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error("GET /api/books error:", error);
     return NextResponse.json({ error: "خطا در دریافت کتاب‌ها" }, { status: 500 });
@@ -188,7 +219,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "رمز ادمین الزامی است" }, { status: 401 });
     }
 
-    const setting = await db.appSetting.findUnique({ where: { key: "adminPassword" } });
+    const [setting] = await db
+      .select()
+      .from(appSettings)
+      .where(eq(appSettings.key, "adminPassword"))
+      .limit(1);
+
     if (!setting) {
       return NextResponse.json({ error: "رمز ادمین تنظیم نشده" }, { status: 500 });
     }
@@ -205,17 +241,22 @@ export async function POST(req: NextRequest) {
     }
 
     const encryptedContent = encrypt(content);
+    const now = new Date().toISOString();
 
-    const book = await db.book.create({
-      data: {
+    const [book] = await db
+      .insert(books)
+      .values({
+        id: crypto.randomUUID(),
         title,
         author: author || "",
         categoryId: categoryId || null,
         description: description || "",
         content: encryptedContent,
         coverColor: coverColor || "#6366f1",
-      },
-    });
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning({ id: books.id });
 
     return NextResponse.json({ id: book.id, message: "کتاب با موفقیت ایجاد شد" });
   } catch (error) {

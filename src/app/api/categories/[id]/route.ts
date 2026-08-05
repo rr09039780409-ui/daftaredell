@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, categories, appSettings, eq } from "@/lib/db";
 import { hashPassword } from "@/lib/encryption";
 import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
@@ -17,7 +17,12 @@ export async function DELETE(
       return NextResponse.json({ error: "رمز ادمین الزامی است" }, { status: 401 });
     }
 
-    const setting = await db.appSetting.findUnique({ where: { key: "adminPassword" } });
+    const [setting] = await db
+      .select()
+      .from(appSettings)
+      .where(eq(appSettings.key, "adminPassword"))
+      .limit(1);
+
     if (!setting) {
       return NextResponse.json({ error: "رمز ادمین تنظیم نشده" }, { status: 500 });
     }
@@ -27,7 +32,7 @@ export async function DELETE(
       return NextResponse.json({ error: "رمز ادمین اشتباه است" }, { status: 403 });
     }
 
-    await db.category.delete({ where: { id } });
+    await db.delete(categories).where(eq(categories.id, id));
 
     return NextResponse.json({ message: "دسته‌بندی با موفقیت حذف شد" });
   } catch (error) {

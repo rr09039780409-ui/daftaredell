@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, books, categories, appSettings, eq, desc, asc } from "@/lib/db";
 import { hashPassword } from "@/lib/encryption";
 import { adminGuard } from "@/lib/admin-guard";
 import { NextRequest, NextResponse } from "next/server";
@@ -9,47 +9,63 @@ export async function GET(req: NextRequest) {
   try {
     const pw = req.nextUrl.searchParams.get("pw");
     if (!pw) {
-      return NextResponse.json({ error: "\u0631\u0645\u0632 \u0627\u062f\u0645\u06cc\u0646 \u0627\u0644\u0632\u0627\u0645\u06cc \u0627\u0633\u062a" }, { status: 401 });
+      return NextResponse.json({ error: "رمز ادمین الزامی است" }, { status: 401 });
     }
 
-    const setting = await db.appSetting.findUnique({ where: { key: "adminPassword" } });
+    const [setting] = await db
+      .select()
+      .from(appSettings)
+      .where(eq(appSettings.key, "adminPassword"))
+      .limit(1);
+
     if (!setting) {
-      return NextResponse.json({ error: "\u0631\u0645\u0632 \u0627\u062f\u0645\u06cc\u0646 \u062a\u0646\u0638\u06cc\u0645 \u0646\u0634\u062f\u0647" }, { status: 500 });
+      return NextResponse.json({ error: "رمز ادمین تنظیم نشده" }, { status: 500 });
     }
 
     const inputHash = hashPassword(pw);
     if (inputHash !== setting.value) {
-      return NextResponse.json({ error: "\u0631\u0645\u0632 \u0627\u062f\u0645\u06cc\u0646 \u0627\u0634\u062a\u0628\u0627\u0647 \u0627\u0633\u062a" }, { status: 403 });
+      return NextResponse.json({ error: "رمز ادمین اشتباه است" }, { status: 403 });
     }
 
-    const books = await db.book.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { category: { select: { id: true, name: true } } },
-    });
+    const allBooks = await db
+      .select({
+        id: books.id,
+        title: books.title,
+        author: books.author,
+        description: books.description,
+        content: books.content,
+        coverColor: books.coverColor,
+        categoryId: books.categoryId,
+        categoryName: categories.name,
+      })
+      .from(books)
+      .leftJoin(categories, eq(books.categoryId, categories.id))
+      .orderBy(desc(books.createdAt));
 
-    const categories = await db.category.findMany({
-      orderBy: { name: "asc" },
-    });
+    const allCategories = await db
+      .select()
+      .from(categories)
+      .orderBy(asc(categories.name));
 
     const backup = {
       version: 1,
       exportedAt: new Date().toISOString(),
-      categories,
-      books: books.map((b) => ({
+      categories: allCategories,
+      books: allBooks.map((b) => ({
         id: b.id,
         title: b.title,
         author: b.author,
         description: b.description,
         content: b.content,
         coverColor: b.coverColor,
-        categoryName: b.category?.name || null,
+        categoryName: b.categoryName || null,
       })),
     };
 
     return NextResponse.json(backup);
   } catch (error) {
     console.error("GET /api/backup error:", error);
-    return NextResponse.json({ error: "\u062e\u0637\u0627 \u062f\u0631 \u0627\u06cc\u062c\u0627\u062f \u0628\u06a9\u0627\u067e" }, { status: 500 });
+    return NextResponse.json({ error: "خطا در ایجاد بکاپ" }, { status: 500 });
   }
 }
 
@@ -59,24 +75,29 @@ export async function POST(req: NextRequest) {
   try {
     const pw = req.nextUrl.searchParams.get("pw");
     if (!pw) {
-      return NextResponse.json({ error: "\u0631\u0645\u0632 \u0627\u062f\u0645\u06cc\u0646 \u0627\u0644\u0632\u0627\u0645\u06cc \u0627\u0633\u062a" }, { status: 401 });
+      return NextResponse.json({ error: "رمز ادمین الزامی است" }, { status: 401 });
     }
 
-    const setting = await db.appSetting.findUnique({ where: { key: "adminPassword" } });
+    const [setting] = await db
+      .select()
+      .from(appSettings)
+      .where(eq(appSettings.key, "adminPassword"))
+      .limit(1);
+
     if (!setting) {
-      return NextResponse.json({ error: "\u0631\u0645\u0632 \u0627\u062f\u0645\u06cc\u0646 \u062a\u0646\u0638\u06cc\u0645 \u0646\u0634\u062f\u0647" }, { status: 500 });
+      return NextResponse.json({ error: "رمز ادمین تنظیم نشده" }, { status: 500 });
     }
 
     const inputHash = hashPassword(pw);
     if (inputHash !== setting.value) {
-      return NextResponse.json({ error: "\u0631\u0645\u0632 \u0627\u062f\u0645\u06cc\u0646 \u0627\u0634\u062a\u0628\u0627\u0647 \u0627\u0633\u062a" }, { status: 403 });
+      return NextResponse.json({ error: "رمز ادمین اشتباه است" }, { status: 403 });
     }
 
     const body = await req.json();
     const { categories: importedCats, books: importedBooks } = body;
 
     if (!importedBooks || !Array.isArray(importedBooks)) {
-      return NextResponse.json({ error: "\u0641\u0631\u0645\u062a \u0641\u0627\u06cc\u0644 \u0646\u0627\u0645\u0639\u062a\u0628\u0631 \u0627\u0633\u062a" }, { status: 400 });
+      return NextResponse.json({ error: "فرمت فایل نامعتبر است" }, { status: 400 });
     }
 
     let importedCount = 0;
@@ -86,11 +107,19 @@ export async function POST(req: NextRequest) {
       for (const cat of importedCats) {
         if (!cat.name) continue;
         try {
-          await db.category.upsert({
-            where: { name: cat.name },
-            update: {},
-            create: { name: cat.name },
-          });
+          const [existing] = await db
+            .select({ id: categories.id })
+            .from(categories)
+            .where(eq(categories.name, cat.name))
+            .limit(1);
+
+          if (!existing) {
+            await db.insert(categories).values({
+              id: cat.id || crypto.randomUUID(),
+              name: cat.name,
+              createdAt: cat.createdAt || new Date().toISOString(),
+            });
+          }
         } catch {
           /* skip duplicates */
         }
@@ -103,43 +132,55 @@ export async function POST(req: NextRequest) {
 
       let categoryId = null;
       if (book.categoryName) {
-        const cat = await db.category.findUnique({ where: { name: book.categoryName } });
+        const [cat] = await db
+          .select({ id: categories.id })
+          .from(categories)
+          .where(eq(categories.name, book.categoryName))
+          .limit(1);
         if (cat) categoryId = cat.id;
       }
 
-      const existing = await db.book.findFirst({ where: { title: book.title } });
+      const [existing] = await db
+        .select({ id: books.id })
+        .from(books)
+        .where(eq(books.title, book.title))
+        .limit(1);
+
+      const now = new Date().toISOString();
       if (existing) {
-        await db.book.update({
-          where: { id: existing.id },
-          data: {
+        await db
+          .update(books)
+          .set({
             author: book.author || "",
             description: book.description || "",
             content: book.content,
             coverColor: book.coverColor || "#6366f1",
             categoryId,
-          },
-        });
+            updatedAt: now,
+          })
+          .where(eq(books.id, existing.id));
       } else {
-        await db.book.create({
-          data: {
-            title: book.title,
-            author: book.author || "",
-            description: book.description || "",
-            content: book.content,
-            coverColor: book.coverColor || "#6366f1",
-            categoryId,
-          },
+        await db.insert(books).values({
+          id: crypto.randomUUID(),
+          title: book.title,
+          author: book.author || "",
+          description: book.description || "",
+          content: book.content,
+          coverColor: book.coverColor || "#6366f1",
+          categoryId,
+          createdAt: now,
+          updatedAt: now,
         });
       }
       importedCount++;
     }
 
     return NextResponse.json({
-      message: `${importedCount} \u06a9\u062a\u0627\u0628 \u0628\u0627 \u0645\u0648\u0641\u0642\u06cc\u062a \u0648\u0627\u0631\u062f \u0634\u062f`,
+      message: `${importedCount} کتاب با موفقیت وارد شد`,
       count: importedCount,
     });
   } catch (error) {
     console.error("POST /api/backup error:", error);
-    return NextResponse.json({ error: "\u062e\u0637\u0627 \u062f\u0631 \u0648\u0627\u0631\u062f \u06a9\u0631\u062f\u0646 \u0628\u06a9\u0627\u067e" }, { status: 500 });
+    return NextResponse.json({ error: "خطا در وارد کردن بکاپ" }, { status: 500 });
   }
 }
