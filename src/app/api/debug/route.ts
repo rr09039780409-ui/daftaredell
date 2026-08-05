@@ -8,11 +8,9 @@ export async function GET() {
     let dbTest = "not tried";
     try {
       const { createClient } = await import("@libsql/client");
-      const { drizzle } = await import("drizzle-orm/libsql");
       const client = createClient({ url: url!, authToken: process.env.DATABASE_AUTH_TOKEN });
-      const db = drizzle(client);
-      const result = await db.run({ sql: "SELECT count(*) as c FROM Category" });
-      dbTest = "OK: " + JSON.stringify(result);
+      const result = await client.execute("SELECT count(*) as c FROM Category");
+      dbTest = "OK: " + JSON.stringify(result.rows);
     } catch (e: unknown) {
       dbTest = "ERR: " + (e instanceof Error ? e.message : String(e));
     }
