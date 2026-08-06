@@ -256,7 +256,7 @@ export async function POST(req: NextRequest) {
         createdAt: now,
         updatedAt: now,
       })
-      .returning({ id: books.id });
+            .returning();
 
     return NextResponse.json({ id: book.id, message: "کتاب با موفقیت ایجاد شد" });
   } catch (error) {
