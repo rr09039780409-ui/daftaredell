@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Settings,
   Sun,
@@ -14,6 +14,9 @@ import {
   FileText,
   Minus,
   Plus,
+  Search,
+  X,
+  ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -172,17 +175,26 @@ function renderCanvas(
    BookReader component
    ═══════════════════════════════════════════════════════════════ */
 
+interface InBookResult {
+  lineIndex: number;
+  text: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
 export default function BookReader() {
-  /* ─── store ─── */
   const bookContent = useAppStore((s) => s.bookContent);
   const readerSettings = useAppStore((s) => s.readerSettings);
   const updateReaderSettings = useAppStore((s) => s.updateReaderSettings);
   const scrollToLine = useAppStore((s) => s.scrollToLine);
   const setScrollToLine = useAppStore((s) => s.setScrollToLine);
 
-  /* ─── local state ─── */
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [scrollPercent, setScrollPercent] = useState(0);
+  const [readerSearchOpen, setReaderSearchOpen] = useState(false);
+  const [readerSearchQuery, setReaderSearchQuery] = useState("");
+  const [readerSearchResults, setReaderSearchResults] = useState<InBookResult[]>([]);
+  const readerSearchInputRef = useRef<HTMLInputElement>(null);
 
   /* ─── refs ─── */
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -200,6 +212,35 @@ export default function BookReader() {
   );
 
   const ThemeIcon = currentThemeMeta.icon;
+
+  const inBookResults = useMemo(() => {
+    if (!readerSearchQuery.trim() || !bookContent) return [];
+    const q = readerSearchQuery.trim().toLowerCase();
+    const lines = bookContent.split("\n");
+    const results: InBookResult[] = [];
+    for (let i = 0; i < lines.length && results.length < 30; i++) {
+      const idx = lines[i].toLowerCase().indexOf(q);
+      if (idx !== -1) {
+        results.push({ lineIndex: i, text: lines[i], matchStart: idx, matchEnd: idx + q.length });
+      }
+    }
+    return results;
+  }, [readerSearchQuery, bookContent]);
+
+  useEffect(() => { setReaderSearchResults(inBookResults); }, [inBookResults]);
+
+  const handleReaderSearchClose = useCallback(() => {
+    setReaderSearchOpen(false);
+    setReaderSearchQuery("");
+    setReaderSearchResults([]);
+  }, []);
+
+  const handleReaderResultClick = useCallback((lineIndex: number) => {
+    setScrollToLine(lineIndex);
+    setReaderSearchOpen(false);
+    setReaderSearchQuery("");
+    setReaderSearchResults([]);
+  }, [setScrollToLine]);
 
   /* ═══════════════════════════════════════════════════════════
      Font loading
@@ -351,7 +392,71 @@ export default function BookReader() {
 
   return (
     <div dir="rtl" className="relative flex flex-1 flex-col overflow-hidden">
-      {/* ── Canvas reading area ── */}
+      <AnimatePresence>
+        {readerSearchOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden border-b"
+            style={{ borderColor: `${colors.text}12`, backgroundColor: `${colors.bg}f5` }}
+          >
+            <div className="mx-auto flex max-w-3xl flex-col gap-2 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Search className="size-4 shrink-0" style={{ color: `${colors.text}60` }} />
+                <input
+                  ref={readerSearchInputRef}
+                  type="search"
+                  value={readerSearchQuery}
+                  onChange={(e) => setReaderSearchQuery(e.target.value)}
+                  placeholder="جستجو در متن این کتاب..."
+                  dir="rtl"
+                  autoFocus
+                  className="h-8 flex-1 rounded-md border-0 bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground/50"
+                  style={{ color: colors.text }}
+                />
+                {readerSearchQuery && (
+                  <span className="shrink-0 text-xs tabular-nums font-medium" style={{ color: `${colors.text}60` }}>
+                    {readerSearchResults.length} نتیجه
+                  </span>
+                )}
+                <button
+                  onClick={handleReaderSearchClose}
+                  className="flex size-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/10 dark:hover:bg-white/10"
+                >
+                  <X className="size-3.5" style={{ color: `${colors.text}60` }} />
+                </button>
+              </div>
+              {readerSearchResults.length > 0 && (
+                <div className="max-h-48 space-y-0.5 overflow-y-auto">
+                  {readerSearchResults.map((r) => (
+                    <button
+                      key={r.lineIndex}
+                      onClick={() => handleReaderResultClick(r.lineIndex)}
+                      className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-right transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                      <span className="mt-0.5 shrink-0 text-[10px] tabular-nums" style={{ color: `${colors.text}50` }}>خط {r.lineIndex + 1}</span>
+                      <p className="flex-1 text-xs leading-relaxed" style={{ color: colors.text }}>
+                        {r.text.slice(0, r.matchStart)}
+                        <mark className="rounded-sm bg-yellow-300/70 px-0.5 text-inherit dark:bg-yellow-500/40">
+                          {r.text.slice(r.matchStart, r.matchEnd)}
+                        </mark>
+                        {r.text.slice(r.matchEnd)}
+                      </p>
+                      <ChevronLeft className="mt-0.5 size-3 shrink-0" style={{ color: `${colors.text}30` }} />
+                    </button>
+                  ))}
+                </div>
+              )}
+              {readerSearchQuery.trim() && readerSearchResults.length === 0 && (
+                <p className="py-2 text-center text-xs" style={{ color: `${colors.text}50` }}>نتیجه‌ای یافت نشد</p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div
         ref={wrapperRef}
         onScroll={handleScroll}
@@ -450,6 +555,22 @@ export default function BookReader() {
 
           {/* Spacer */}
           <div className="flex-1" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                onClick={() => setReaderSearchOpen(!readerSearchOpen)}
+              >
+                <Search className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p>جستجو در کتاب</p>
+            </TooltipContent>
+          </Tooltip>
 
           {/* Theme cycle button */}
           <Tooltip>

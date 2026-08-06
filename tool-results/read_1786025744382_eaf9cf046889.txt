@@ -1,0 +1,796 @@
+     1→"use client";
+     2→
+     3→import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+     4→import { motion, AnimatePresence } from "framer-motion";
+     5→import {
+     6→  Settings,
+     7→  Sun,
+     8→  Moon,
+     9→  BookOpen,
+    10→  Type,
+    11→  AlignVerticalSpaceAround,
+    12→  Palette,
+    13→  Loader2,
+    14→  FileText,
+    15→  Minus,
+    16→  Plus,
+    17→  Search,
+    18→  X,
+    19→  ChevronLeft,
+    20→} from "lucide-react";
+    21→import { Button } from "@/components/ui/button";
+    22→import { Slider } from "@/components/ui/slider";
+    23→import {
+    24→  Select,
+    25→  SelectContent,
+    26→  SelectItem,
+    27→  SelectTrigger,
+    28→  SelectValue,
+    29→} from "@/components/ui/select";
+    30→import { Separator } from "@/components/ui/separator";
+    31→import {
+    32→  Tooltip,
+    33→  TooltipContent,
+    34→  TooltipTrigger,
+    35→} from "@/components/ui/tooltip";
+    36→import {
+    37→  Sheet,
+    38→  SheetContent,
+    39→  SheetDescription,
+    40→  SheetHeader,
+    41→  SheetTitle,
+    42→  SheetTrigger,
+    43→} from "@/components/ui/sheet";
+    44→import { useAppStore, getThemeColors, type ReaderSettings } from "@/store/useAppStore";
+    45→
+    46→/* ═══════════════════════════════════════════════════════════════
+    47→   Constants
+    48→   ═══════════════════════════════════════════════════════════════ */
+    49→
+    50→const FONT_OPTIONS = [
+    51→  { value: "Vazirmatn", label: "وزیرمتن" },
+    52→  { value: "Tahoma", label: "تاهوما" },
+    53→  { value: "Arial", label: "اریال" },
+    54→  { value: "serif", label: "سریف" },
+    55→] as const;
+    56→
+    57→const THEME_OPTIONS: {
+    58→  value: ReaderSettings["theme"];
+    59→  label: string;
+    60→  icon: typeof Sun;
+    61→}[] = [
+    62→  { value: "light", label: "روشن", icon: Sun },
+    63→  { value: "dark", label: "تاریک", icon: Moon },
+    64→  { value: "sepia", label: "ژئنت", icon: BookOpen },
+    65→];
+    66→
+    67→const CANVAS_PADDING_X = 40;
+    68→const CANVAS_PADDING_Y = 32;
+    69→
+    70→/* ═══════════════════════════════════════════════════════════════
+    71→   Text-wrapping utility (handles Persian / RTL text)
+    72→   ═══════════════════════════════════════════════════════════════ */
+    73→
+    74→function wrapTextToLines(
+    75→  ctx: CanvasRenderingContext2D,
+    76→  text: string,
+    77→  maxWidth: number
+    78→): string[] {
+    79→  const paragraphs = text.split(/\n/);
+    80→  const lines: string[] = [];
+    81→
+    82→  for (const paragraph of paragraphs) {
+    83→    if (!paragraph.trim()) {
+    84→      lines.push("");
+    85→      continue;
+    86→    }
+    87→
+    88→    const words = paragraph.split(/\s+/);
+    89→    let currentLine = "";
+    90→
+    91→    for (const word of words) {
+    92→      if (!word) continue;
+    93→
+    94→      const candidate = currentLine ? `${currentLine} ${word}` : word;
+    95→      const measured = ctx.measureText(candidate);
+    96→
+    97→      if (measured.width > maxWidth && currentLine) {
+    98→        lines.push(currentLine);
+    99→        currentLine = word;
+   100→      } else {
+   101→        currentLine = candidate;
+   102→      }
+   103→    }
+   104→
+   105→    if (currentLine) {
+   106→      lines.push(currentLine);
+   107→    }
+   108→  }
+   109→
+   110→  return lines;
+   111→}
+   112→
+   113→/* ═══════════════════════════════════════════════════════════════
+   114→   Canvas rendering engine
+   115→   ═══════════════════════════════════════════════════════════════ */
+   116→
+   117→function renderCanvas(
+   118→  canvas: HTMLCanvasElement,
+   119→  content: string,
+   120→  settings: ReaderSettings,
+   121→  containerWidth: number
+   122→): void {
+   123→  const ctx = canvas.getContext("2d");
+   124→  if (!ctx) return;
+   125→
+   126→  const dpr = window.devicePixelRatio || 1;
+   127→  const { fontSize, theme, fontFamily, lineHeight } = settings;
+   128→  const colors = getThemeColors(theme);
+   129→
+   130→  /* Build font string with fallbacks */
+   131→  const fontStr = `${fontSize}px "${fontFamily}", "Vazirmatn", Tahoma, "Segoe UI", sans-serif`;
+   132→
+   133→  /* Reset transform before measuring */
+   134→  ctx.setTransform(1, 0, 0, 1, 0, 0);
+   135→  ctx.font = fontStr;
+   136→
+   137→  /* Word-wrap */
+   138→  const maxWidth = Math.max(containerWidth - CANVAS_PADDING_X * 2, 60);
+   139→  const lines = wrapTextToLines(ctx, content, maxWidth);
+   140→
+   141→  const lineSpacing = fontSize * lineHeight;
+   142→  const totalHeight =
+   143→    lines.length * lineSpacing + CANVAS_PADDING_Y * 2;
+   144→
+   145→  /* Size canvas (physical × dpr, CSS at logical) */
+   146→  canvas.width = containerWidth * dpr;
+   147→  canvas.height = totalHeight * dpr;
+   148→  canvas.style.width = `${containerWidth}px`;
+   149→  canvas.style.height = `${totalHeight}px`;
+   150→
+   151→  /* Scale context for crisp rendering on HiDPI */
+   152→  ctx.scale(dpr, dpr);
+   153→
+   154→  /* Background fill */
+   155→  ctx.fillStyle = colors.bg;
+   156→  ctx.fillRect(0, 0, containerWidth, totalHeight);
+   157→
+   158→  /* Text settings */
+   159→  ctx.font = fontStr;
+   160→  ctx.fillStyle = colors.text;
+   161→  ctx.direction = "rtl";
+   162→  ctx.textAlign = "right";
+   163→  ctx.textBaseline = "top";
+   164→
+   165→  /* Draw each line */
+   166→  const x = containerWidth - CANVAS_PADDING_X;
+   167→  for (let i = 0; i < lines.length; i++) {
+   168→    if (lines[i]) {
+   169→      ctx.fillText(lines[i], x, CANVAS_PADDING_Y + i * lineSpacing);
+   170→    }
+   171→  }
+   172→}
+   173→
+   174→/* ═══════════════════════════════════════════════════════════════
+   175→   BookReader component
+   176→   ═══════════════════════════════════════════════════════════════ */
+   177→
+   178→interface InBookResult {
+   179→  lineIndex: number;
+   180→  text: string;
+   181→  matchStart: number;
+   182→  matchEnd: number;
+   183→}
+   184→
+   185→export default function BookReader() {
+   186→  const bookContent = useAppStore((s) => s.bookContent);
+   187→  const readerSettings = useAppStore((s) => s.readerSettings);
+   188→  const updateReaderSettings = useAppStore((s) => s.updateReaderSettings);
+   189→  const scrollToLine = useAppStore((s) => s.scrollToLine);
+   190→  const setScrollToLine = useAppStore((s) => s.setScrollToLine);
+   191→
+   192→  const [settingsOpen, setSettingsOpen] = useState(false);
+   193→  const [scrollPercent, setScrollPercent] = useState(0);
+   194→  const [readerSearchOpen, setReaderSearchOpen] = useState(false);
+   195→  const [readerSearchQuery, setReaderSearchQuery] = useState("");
+   196→  const [readerSearchResults, setReaderSearchResults] = useState<InBookResult[]>([]);
+   197→  const readerSearchInputRef = useRef<HTMLInputElement>(null);
+   198→
+   199→  /* ─── refs ─── */
+   200→  const canvasRef = useRef<HTMLCanvasElement>(null);
+   201→  const wrapperRef = useRef<HTMLDivElement>(null);
+   202→
+   203→  /* ─── derived ─── */
+   204→  const colors = useMemo(
+   205→    () => getThemeColors(readerSettings.theme),
+   206→    [readerSettings.theme]
+   207→  );
+   208→
+   209→  const currentThemeMeta = useMemo(
+   210→    () => THEME_OPTIONS.find((t) => t.value === readerSettings.theme)!,
+   211→    [readerSettings.theme]
+   212→  );
+   213→
+   214→  const ThemeIcon = currentThemeMeta.icon;
+   215→
+   216→  const inBookResults = useMemo(() => {
+   217→    if (!readerSearchQuery.trim() || !bookContent) return [];
+   218→    const q = readerSearchQuery.trim().toLowerCase();
+   219→    const lines = bookContent.split("\n");
+   220→    const results: InBookResult[] = [];
+   221→    for (let i = 0; i < lines.length && results.length < 30; i++) {
+   222→      const idx = lines[i].toLowerCase().indexOf(q);
+   223→      if (idx !== -1) {
+   224→        results.push({ lineIndex: i, text: lines[i], matchStart: idx, matchEnd: idx + q.length });
+   225→      }
+   226→    }
+   227→    return results;
+   228→  }, [readerSearchQuery, bookContent]);
+   229→
+   230→  useEffect(() => { setReaderSearchResults(inBookResults); }, [inBookResults]);
+   231→
+   232→  const handleReaderSearchFocus = useCallback(() => {
+   233→    if (!readerSearchOpen) setReaderSearchOpen(true);
+   234→  }, [readerSearchOpen]);
+   235→
+   236→  const handleReaderSearchClose = useCallback(() => {
+   237→    setReaderSearchOpen(false);
+   238→    setReaderSearchQuery("");
+   239→    setReaderSearchResults([]);
+   240→  }, []);
+   241→
+   242→  const handleReaderResultClick = useCallback((lineIndex: number) => {
+   243→    setScrollToLine(lineIndex);
+   244→    setReaderSearchOpen(false);
+   245→    setReaderSearchQuery("");
+   246→    setReaderSearchResults([]);
+   247→  }, [setScrollToLine]);
+   248→
+   249→  /* ═══════════════════════════════════════════════════════════
+   250→     Font loading
+   251→     ═══════════════════════════════════════════════════════════ */
+   252→
+   253→  const [fontReady, setFontReady] = useState(true);
+   254→
+   255→  useEffect(() => {
+   256→    let cancelled = false;
+   257→    document.fonts
+   258→      .load(`20px "${readerSettings.fontFamily}"`)
+   259→      .then(() => { if (!cancelled) setFontReady(true); })
+   260→      .catch(() => { if (!cancelled) setFontReady(true); });
+   261→    return () => { cancelled = true; };
+   262→  }, [readerSettings.fontFamily]);
+   263→
+   264→  /* ═══════════════════════════════════════════════════════════
+   265→     Canvas render loop
+   266→     ═══════════════════════════════════════════════════════════ */
+   267→
+   268→  const paint = useCallback(() => {
+   269→    const canvas = canvasRef.current;
+   270→    const wrapper = wrapperRef.current;
+   271→    if (!canvas || !wrapper || !fontReady || !bookContent) return;
+   272→    renderCanvas(canvas, bookContent, readerSettings, wrapper.clientWidth);
+   273→  }, [bookContent, readerSettings, fontReady]);
+   274→
+   275→  /* Re-paint when content / settings / font-readiness change */
+   276→  useEffect(() => {
+   277→    paint();
+   278→  }, [paint]);
+   279→
+   280→  /* Re-paint on container resize */
+   281→  useEffect(() => {
+   282→    const wrapper = wrapperRef.current;
+   283→    if (!wrapper) return;
+   284→
+   285→    const ro = new ResizeObserver(() => paint());
+   286→    ro.observe(wrapper);
+   287→    return () => ro.disconnect();
+   288→  }, [paint]);
+   289→
+   290→  /* ═══════════════════════════════════════════════════════════
+   291→     Scroll tracking
+   292→     ═══════════════════════════════════════════════════════════ */
+   293→
+   294→  const selectedBook = useAppStore((s) => s.selectedBook);
+   295→
+   296→  /* Bookmark: restore scroll position after canvas is painted */
+   297→  const bookmarkRestoredRef = useRef<string | null>(null);
+   298→  useEffect(() => {
+   299→    if (!selectedBook || !bookContent) return;
+   300→    const bookId = selectedBook.id;
+   301→    if (bookmarkRestoredRef.current === bookId) return;
+   302→    bookmarkRestoredRef.current = bookId;
+   303→
+   304→    const timer = setTimeout(() => {
+   305→      /* Priority 1: scroll to search line */
+   306→      if (scrollToLine !== null && scrollToLine > 0) {
+   307→        const lineSpacing = readerSettings.fontSize * readerSettings.lineHeight;
+   308→        const targetY = scrollToLine * lineSpacing - 100;
+   309→        wrapperRef.current?.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+   310→        setScrollToLine(null);
+   311→        return;
+   312→      }
+   313→      /* Priority 2: restore bookmark */
+   314→      const saved = localStorage.getItem(`bookmark-${bookId}`);
+   315→      if (saved) {
+   316→        const pos = parseFloat(saved);
+   317→        wrapperRef.current?.scrollTo({ top: pos });
+   318→      }
+   319→    }, 200);
+   320→    return () => clearTimeout(timer);
+   321→  }, [selectedBook?.id, bookContent, scrollToLine, readerSettings.fontSize, readerSettings.lineHeight, setScrollToLine]);
+   322→
+   323→  const handleScroll = useCallback(() => {
+   324→    const el = wrapperRef.current;
+   325→    if (!el) return;
+   326→    const max = el.scrollHeight - el.clientHeight;
+   327→    setScrollPercent(max > 0 ? Math.round((el.scrollTop / max) * 100) : 0);
+   328→    if (selectedBook) {
+   329→      localStorage.setItem(`bookmark-${selectedBook.id}`, String(el.scrollTop));
+   330→    }
+   331→  }, [selectedBook]);
+   332→
+   333→  /* ═══════════════════════════════════════════════════════════
+   334→     Settings handlers
+   335→     ═══════════════════════════════════════════════════════════ */
+   336→
+   337→  const cycleTheme = useCallback(() => {
+   338→    const order: ReaderSettings["theme"][] = ["light", "dark", "sepia"];
+   339→    const idx = order.indexOf(readerSettings.theme);
+   340→    updateReaderSettings({ theme: order[(idx + 1) % order.length] });
+   341→  }, [readerSettings.theme, updateReaderSettings]);
+   342→
+   343→  const increaseFont = useCallback(() => {
+   344→    updateReaderSettings({
+   345→      fontSize: Math.min(32, readerSettings.fontSize + 1),
+   346→    });
+   347→  }, [readerSettings.fontSize, updateReaderSettings]);
+   348→
+   349→  const decreaseFont = useCallback(() => {
+   350→    updateReaderSettings({
+   351→      fontSize: Math.max(12, readerSettings.fontSize - 1),
+   352→    });
+   353→  }, [readerSettings.fontSize, updateReaderSettings]);
+   354→
+   355→  /* ═══════════════════════════════════════════════════════════
+   356→     Anti-copy: prevent context menu & text selection on canvas
+   357→     ═══════════════════════════════════════════════════════════ */
+   358→
+   359→  const handleCanvasContextMenu = useCallback(
+   360→    (e: React.MouseEvent) => e.preventDefault(),
+   361→    []
+   362→  );
+   363→
+   364→  /* ═══════════════════════════════════════════════════════════
+   365→     Empty state
+   366→     ═══════════════════════════════════════════════════════════ */
+   367→
+   368→  if (!bookContent) {
+   369→    return (
+   370→      <motion.div
+   371→        initial={{ opacity: 0, y: 12 }}
+   372→        animate={{ opacity: 1, y: 0 }}
+   373→        transition={{ duration: 0.4 }}
+   374→        dir="rtl"
+   375→        className="flex flex-1 flex-col items-center justify-center gap-4 p-8"
+   376→      >
+   377→        <div
+   378→          className="flex h-24 w-24 items-center justify-center rounded-full"
+   379→          style={{ backgroundColor: `${colors.text}10` }}
+   380→        >
+   381→          <FileText className="size-12" style={{ color: `${colors.text}60` }} />
+   382→        </div>
+   383→        <p className="text-lg font-semibold" style={{ color: colors.text }}>
+   384→          محتوایی برای نمایش وجود ندارد
+   385→        </p>
+   386→        <p className="text-sm" style={{ color: `${colors.text}70` }}>
+   387→          لطفاً کتابی را از کتابخانه انتخاب کنید
+   388→        </p>
+   389→      </motion.div>
+   390→    );
+   391→  }
+   392→
+   393→  /* ═══════════════════════════════════════════════════════════
+   394→     Render
+   395→     ═══════════════════════════════════════════════════════════ */
+   396→
+   397→  return (
+   398→    <div dir="rtl" className="relative flex flex-1 flex-col overflow-hidden">
+   399→      <AnimatePresence>
+   400→        {readerSearchOpen && (
+   401→          <motion.div
+   402→            initial={{ opacity: 0, height: 0 }}
+   403→            animate={{ opacity: 1, height: "auto" }}
+   404→            exit={{ opacity: 0, height: 0 }}
+   405→            transition={{ duration: 0.2 }}
+   406→            className="overflow-hidden border-b"
+   407→            style={{ borderColor: `${colors.text}12`, backgroundColor: `${colors.bg}f5` }}
+   408→          >
+   409→            <div className="mx-auto flex max-w-3xl flex-col gap-2 px-4 py-3">
+   410→              <div className="flex items-center gap-2">
+   411→                <Search className="size-4 shrink-0" style={{ color: `${colors.text}60` }} />
+   412→                <input
+   413→                  ref={readerSearchInputRef}
+   414→                  type="search"
+   415→                  value={readerSearchQuery}
+   416→                  onChange={(e) => setReaderSearchQuery(e.target.value)}
+   417→                  placeholder="جستجو در متن این کتاب..."
+   418→                  dir="rtl"
+   419→                  autoFocus
+   420→                  className="h-8 flex-1 rounded-md border-0 bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground/50"
+   421→                  style={{ color: colors.text }}
+   422→                />
+   423→                {readerSearchQuery && (
+   424→                  <span className="shrink-0 text-xs tabular-nums font-medium" style={{ color: `${colors.text}60` }}>
+   425→                    {readerSearchResults.length} نتیجه
+   426→                  </span>
+   427→                )}
+   428→                <button
+   429→                  onClick={handleReaderSearchClose}
+   430→                  className="flex size-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/10 dark:hover:bg-white/10"
+   431→                >
+   432→                  <X className="size-3.5" style={{ color: `${colors.text}60` }} />
+   433→                </button>
+   434→              </div>
+   435→              {readerSearchResults.length > 0 && (
+   436→                <div className="max-h-48 space-y-0.5 overflow-y-auto">
+   437→                  {readerSearchResults.map((r) => (
+   438→                    <button
+   439→                      key={r.lineIndex}
+   440→                      onClick={() => handleReaderResultClick(r.lineIndex)}
+   441→                      className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-right transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+   442→                    >
+   443→                      <span className="mt-0.5 shrink-0 text-[10px] tabular-nums" style={{ color: `${colors.text}50` }}>خط {r.lineIndex + 1}</span>
+   444→                      <p className="flex-1 text-xs leading-relaxed" style={{ color: colors.text }}>
+   445→                        {r.text.slice(0, r.matchStart)}
+   446→                        <mark className="rounded-sm bg-yellow-300/70 px-0.5 text-inherit dark:bg-yellow-500/40">
+   447→                          {r.text.slice(r.matchStart, r.matchEnd)}
+   448→                        </mark>
+   449→                        {r.text.slice(r.matchEnd)}
+   450→                      </p>
+   451→                      <ChevronLeft className="mt-0.5 size-3 shrink-0" style={{ color: `${colors.text}30` }} />
+   452→                    </button>
+   453→                  ))}
+   454→                </div>
+   455→              )}
+   456→              {readerSearchQuery.trim() && readerSearchResults.length === 0 && (
+   457→                <p className="py-2 text-center text-xs" style={{ color: `${colors.text}50` }}>نتیجه‌ای یافت نشد</p>
+   458→              )}
+   459→            </div>
+   460→          </motion.div>
+   461→        )}
+   462→      </AnimatePresence>
+   463→
+   464→      <div
+   465→        ref={wrapperRef}
+   466→        onScroll={handleScroll}
+   467→        onContextMenu={handleCanvasContextMenu}
+   468→        className="flex-1 overflow-y-auto overscroll-contain"
+   469→        style={{ backgroundColor: colors.bg }}
+   470→      >
+   471→        {/* Font-loading indicator */}
+   472→        {!fontReady && (
+   473→          <div className="flex items-center justify-center py-24">
+   474→            <Loader2
+   475→              className="size-8 animate-spin"
+   476→              style={{ color: `${colors.text}50` }}
+   477→            />
+   478→          </div>
+   479→        )}
+   480→
+   481→        <canvas
+   482→          ref={canvasRef}
+   483→          className="block select-none"
+   484→          style={{
+   485→            pointerEvents: fontReady ? "auto" : "none",
+   486→            WebkitUserSelect: "none",
+   487→            WebkitTouchCallout: "none",
+   488→            userSelect: "none",
+   489→          }}
+   490→          onContextMenu={handleCanvasContextMenu}
+   491→        />
+   492→      </div>
+   493→
+   494→      {/* ── Bottom toolbar ── */}
+   495→      <motion.div
+   496→        initial={{ y: 24, opacity: 0 }}
+   497→        animate={{ y: 0, opacity: 1 }}
+   498→        transition={{ delay: 0.25, duration: 0.45, ease: "easeOut" }}
+   499→        className="relative z-10 border-t backdrop-blur-md"
+   500→        style={{
+   501→          borderColor: `${colors.text}12`,
+   502→          backgroundColor: `${colors.bg}dd`,
+   503→        }}
+   504→      >
+   505→        <div className="mx-auto flex max-w-3xl items-center gap-1.5 px-4 py-2 sm:gap-2">
+   506→          {/* Scroll progress */}
+   507→          <span
+   508→            className="min-w-[3rem] text-center text-[11px] tabular-nums font-medium"
+   509→            style={{ color: `${colors.text}80` }}
+   510→          >
+   511→            {scrollPercent}٪
+   512→          </span>
+   513→
+   514→          <Separator orientation="vertical" className="mx-0.5 h-5" />
+   515→
+   516→          {/* Font size: decrease */}
+   517→          <Tooltip>
+   518→            <TooltipTrigger asChild>
+   519→              <Button
+   520→                variant="ghost"
+   521→                size="icon"
+   522→                className="size-8"
+   523→                onClick={decreaseFont}
+   524→                disabled={readerSettings.fontSize <= 12}
+   525→              >
+   526→                <Minus className="size-3.5" />
+   527→              </Button>
+   528→            </TooltipTrigger>
+   529→            <TooltipContent side="top">
+   530→              <p>کاهش اندازه فونت</p>
+   531→            </TooltipContent>
+   532→          </Tooltip>
+   533→
+   534→          {/* Font size value */}
+   535→          <span
+   536→            className="min-w-[2.5rem] text-center text-xs tabular-nums font-semibold"
+   537→            style={{ color: colors.text }}
+   538→          >
+   539→            {readerSettings.fontSize}
+   540→          </span>
+   541→
+   542→          {/* Font size: increase */}
+   543→          <Tooltip>
+   544→            <TooltipTrigger asChild>
+   545→              <Button
+   546→                variant="ghost"
+   547→                size="icon"
+   548→                className="size-8"
+   549→                onClick={increaseFont}
+   550→                disabled={readerSettings.fontSize >= 32}
+   551→              >
+   552→                <Plus className="size-3.5" />
+   553→              </Button>
+   554→            </TooltipTrigger>
+   555→            <TooltipContent side="top">
+   556→              <p>افزایش اندازه فونت</p>
+   557→            </TooltipContent>
+   558→          </Tooltip>
+   559→
+   560→          {/* Spacer */}
+   561→          <div className="flex-1" />
+   562→
+   563→          <Tooltip>
+   564→            <TooltipTrigger asChild>
+   565→              <Button
+   566→                variant="ghost"
+   567→                size="icon"
+   568→                className="size-8"
+   569→                onClick={() => setReaderSearchOpen(!readerSearchOpen)}
+   570→              >
+   571→                <Search className="size-4" />
+   572→              </Button>
+   573→            </TooltipTrigger>
+   574→            <TooltipContent side="top">
+   575→              <p>جستجو در کتاب</p>
+   576→            </TooltipContent>
+   577→          </Tooltip>
+   578→
+   579→          {/* Theme cycle button */}
+   580→          <Tooltip>
+   581→            <TooltipTrigger asChild>
+   582→              <Button
+   583→                variant="ghost"
+   584→                size="icon"
+   585→                className="size-8"
+   586→                onClick={cycleTheme}
+   587→              >
+   588→                <ThemeIcon className="size-4" />
+   589→              </Button>
+   590→            </TooltipTrigger>
+   591→            <TooltipContent side="top">
+   592→              <p>
+   593→                پوسته: {currentThemeMeta.label}
+   594→              </p>
+   595→            </TooltipContent>
+   596→          </Tooltip>
+   597→
+   598→          <Separator orientation="vertical" className="mx-0.5 h-5" />
+   599→
+   600→          {/* Settings sheet trigger */}
+   601→          <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+   602→            <SheetTrigger asChild>
+   603→              <Tooltip>
+   604→                <TooltipTrigger asChild>
+   605→                  <Button variant="ghost" size="icon" className="size-8">
+   606→                    <Settings className="size-4" />
+   607→                  </Button>
+   608→                </TooltipTrigger>
+   609→                <TooltipContent side="top">
+   610→                  <p>تنظیمات خواندن</p>
+   611→                </TooltipContent>
+   612→              </Tooltip>
+   613→            </SheetTrigger>
+   614→
+   615→            <SheetContent side="right" dir="rtl" className="w-80 sm:max-w-sm">
+   616→              <SheetHeader className="mb-6">
+   617→                <SheetTitle className="text-right">تنظیمات خواندن</SheetTitle>
+   618→                <SheetDescription className="text-right">
+   619→                  تنظیمات نمایش متن را تغییر دهید
+   620→                </SheetDescription>
+   621→              </SheetHeader>
+   622→
+   623→              <div className="flex flex-col gap-7 px-2">
+   624→                {/* ── Font size ── */}
+   625→                <div className="flex flex-col gap-3">
+   626→                  <div className="flex items-center gap-2">
+   627→                    <Type className="size-4 text-muted-foreground" />
+   628→                    <span className="text-sm font-medium">اندازه فونت</span>
+   629→                  </div>
+   630→                  <div className="flex items-center gap-4">
+   631→                    <Slider
+   632→                      value={[readerSettings.fontSize]}
+   633→                      onValueChange={([v]) =>
+   634→                        updateReaderSettings({ fontSize: v })
+   635→                      }
+   636→                      min={12}
+   637→                      max={32}
+   638→                      step={1}
+   639→                      className="flex-1"
+   640→                    />
+   641→                    <span className="min-w-[2.5rem] text-center text-sm tabular-nums font-medium text-muted-foreground">
+   642→                      {readerSettings.fontSize}
+   643→                    </span>
+   644→                  </div>
+   645→                </div>
+   646→
+   647→                <Separator />
+   648→
+   649→                {/* ── Theme ── */}
+   650→                <div className="flex flex-col gap-3">
+   651→                  <div className="flex items-center gap-2">
+   652→                    <Palette className="size-4 text-muted-foreground" />
+   653→                    <span className="text-sm font-medium">پوسته</span>
+   654→                  </div>
+   655→                  <Select
+   656→                    dir="rtl"
+   657→                    value={readerSettings.theme}
+   658→                    onValueChange={(v) =>
+   659→                      updateReaderSettings({
+   660→                        theme: v as ReaderSettings["theme"],
+   661→                      })
+   662→                    }
+   663→                  >
+   664→                    <SelectTrigger className="w-full">
+   665→                      <SelectValue />
+   666→                    </SelectTrigger>
+   667→                    <SelectContent>
+   668→                      {THEME_OPTIONS.map((opt) => (
+   669→                        <SelectItem key={opt.value} value={opt.value}>
+   670→                          <span className="flex items-center gap-2">
+   671→                            <opt.icon className="size-4" />
+   672→                            {opt.label}
+   673→                          </span>
+   674→                        </SelectItem>
+   675→                      ))}
+   676→                    </SelectContent>
+   677→                  </Select>
+   678→                </div>
+   679→
+   680→                <Separator />
+   681→
+   682→                {/* ── Font family ── */}
+   683→                <div className="flex flex-col gap-3">
+   684→                  <div className="flex items-center gap-2">
+   685→                    <BookOpen className="size-4 text-muted-foreground" />
+   686→                    <span className="text-sm font-medium">نوع فونت</span>
+   687→                  </div>
+   688→                  <Select
+   689→                    dir="rtl"
+   690→                    value={readerSettings.fontFamily}
+   691→                    onValueChange={(v) =>
+   692→                      updateReaderSettings({ fontFamily: v })
+   693→                    }
+   694→                  >
+   695→                    <SelectTrigger className="w-full">
+   696→                      <SelectValue />
+   697→                    </SelectTrigger>
+   698→                    <SelectContent>
+   699→                      {FONT_OPTIONS.map((opt) => (
+   700→                        <SelectItem key={opt.value} value={opt.value}>
+   701→                          {opt.label}
+   702→                        </SelectItem>
+   703→                      ))}
+   704→                    </SelectContent>
+   705→                  </Select>
+   706→                </div>
+   707→
+   708→                <Separator />
+   709→
+   710→                {/* ── Line height ── */}
+   711→                <div className="flex flex-col gap-3">
+   712→                  <div className="flex items-center gap-2">
+   713→                    <AlignVerticalSpaceAround className="size-4 text-muted-foreground" />
+   714→                    <span className="text-sm font-medium">فاصله خطوط</span>
+   715→                  </div>
+   716→                  <div className="flex items-center gap-4">
+   717→                    <Slider
+   718→                      value={[Math.round(readerSettings.lineHeight * 10)]}
+   719→                      onValueChange={([v]) =>
+   720→                        updateReaderSettings({ lineHeight: v / 10 })
+   721→                      }
+   722→                      min={14}
+   723→                      max={30}
+   724→                      step={1}
+   725→                      className="flex-1"
+   726→                    />
+   727→                    <span className="min-w-[2.5rem] text-center text-sm tabular-nums font-medium text-muted-foreground">
+   728→                      {readerSettings.lineHeight.toFixed(1)}
+   729→                    </span>
+   730→                  </div>
+   731→                </div>
+   732→
+   733→                <Separator />
+   734→
+   735→                {/* ── Theme preview swatches ── */}
+   736→                <div className="flex flex-col gap-3">
+   737→                  <span className="text-sm font-medium">پیش‌نمایش پوسته</span>
+   738→                  <div className="flex gap-3">
+   739→                    {THEME_OPTIONS.map((opt) => {
+   740→                      const previewColors = getThemeColors(opt.value);
+   741→                      const isActive = readerSettings.theme === opt.value;
+   742→                      return (
+   743→                        <button
+   744→                          key={opt.value}
+   745→                          onClick={() =>
+   746→                            updateReaderSettings({
+   747→                              theme: opt.value,
+   748→                            })
+   749→                          }
+   750→                          className={`relative flex size-14 flex-col items-center justify-center rounded-xl border-2 transition-all ${
+   751→                            isActive
+   752→                              ? "scale-110 shadow-md"
+   753→                              : "hover:scale-105 opacity-70 hover:opacity-100"
+   754→                          }`}
+   755→                          style={{
+   756→                            backgroundColor: previewColors.bg,
+   757→                            borderColor: isActive
+   758→                              ? previewColors.text
+   759→                              : "transparent",
+   760→                          }}
+   761→                          title={opt.label}
+   762→                        >
+   763→                          <span
+   764→                            className="text-[10px] font-bold leading-none"
+   765→                            style={{ color: previewColors.text }}
+   766→                          >
+   767→                            آا
+   768→                          </span>
+   769→                          <span className="mt-0.5 text-[8px] leading-none text-muted-foreground">
+   770→                            {opt.label}
+   771→                          </span>
+   772→                          {isActive && (
+   773→                            <motion.div
+   774→                              layoutId="theme-active-ring"
+   775→                              className="absolute inset-0 rounded-xl ring-2 ring-primary"
+   776→                              transition={{
+   777→                                type: "spring",
+   778→                                stiffness: 400,
+   779→                                damping: 25,
+   780→                              }}
+   781→                            />
+   782→                          )}
+   783→                        </button>
+   784→                      );
+   785→                    })}
+   786→                  </div>
+   787→                </div>
+   788→              </div>
+   789→            </SheetContent>
+   790→          </Sheet>
+   791→        </div>
+   792→      </motion.div>
+   793→    </div>
+   794→  );
+   795→}
+   796→

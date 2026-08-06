@@ -132,6 +132,7 @@ function SearchModeTabs() {
   const setSearchMode = useAppStore((s) => s.setSearchMode);
   const searchBookId = useAppStore((s) => s.searchBookId);
   const setSearchBookId = useAppStore((s) => s.setSearchBookId);
+  const setSearchExpanded = useAppStore((s) => s.setSearchExpanded);
   const books = useAppStore((s) => s.books);
   const searchQuery = useAppStore((s) => s.searchQuery);
 
@@ -141,7 +142,7 @@ function SearchModeTabs() {
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" onMouseDown={() => setSearchExpanded(true)}>
       <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
         {SEARCH_MODES.map((mode) => {
           const Icon = mode.icon;

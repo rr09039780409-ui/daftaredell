@@ -197,8 +197,12 @@ export function Header() {
                     href="https://daftaredell.ir/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-[10px] leading-none text-muted-foreground transition-colors hover:text-primary hover:underline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      window.open("https://daftaredell.ir/", "_blank", "noopener,noreferrer");
+                    }}
+                    className="text-[10px] leading-none text-muted-foreground transition-colors hover:text-primary hover:underline cursor-pointer"
                   >
                     daftaredell.ir
                   </a>
@@ -228,6 +232,7 @@ export function Header() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onFocus={() => setSearchExpanded(true)}
+                  onBlur={() => setTimeout(() => setSearchExpanded(false), 200)}
                   className="h-9 pr-9 text-sm"
                   dir="rtl"
                 />
