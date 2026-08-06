@@ -261,6 +261,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ id: book.id, message: "کتاب با موفقیت ایجاد شد" });
   } catch (error) {
     console.error("POST /api/books error:", error);
-    return NextResponse.json({ error: "خطا در ایجاد کتاب" }, { status: 500 });
+    return NextResponse.json({ error: "خطا در ایجاد کتاب", detail: String(error) }, { status: 500 });
   }
 }
