@@ -17,6 +17,8 @@ import {
   Search,
   X,
   ChevronLeft,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -111,6 +113,67 @@ function wrapTextToLines(
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   Wrapped lines with logical-line mapping (for highlight)
+   ═══════════════════════════════════════════════════════════════ */
+
+interface WrappedLinesResult {
+  lines: string[];
+  logicalMap: number[];
+}
+
+function wrapTextToLinesMapped(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+): WrappedLinesResult {
+  const paragraphs = text.split(/\n/);
+  const lines: string[] = [];
+  const logicalMap: number[] = [];
+
+  for (let pi = 0; pi < paragraphs.length; pi++) {
+    const paragraph = paragraphs[pi];
+    if (!paragraph.trim()) {
+      lines.push("");
+      logicalMap.push(pi);
+      continue;
+    }
+
+    const words = paragraph.split(/\s+/);
+    let currentLine = "";
+
+    for (const word of words) {
+      if (!word) continue;
+      const candidate = currentLine ? `${currentLine} ${word}` : word;
+      const measured = ctx.measureText(candidate);
+
+      if (measured.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        logicalMap.push(pi);
+        currentLine = word;
+      } else {
+        currentLine = candidate;
+      }
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+      logicalMap.push(pi);
+    }
+  }
+
+  return { lines, logicalMap };
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Highlight info passed to canvas renderer
+   ═══════════════════════════════════════════════════════════════ */
+
+interface HighlightInfo {
+  query: string;
+  currentLogicalLine: number | null;
+}
+
+/* ═══════════════════════════════════════════════════════════════
    Canvas rendering engine
    ═══════════════════════════════════════════════════════════════ */
 
@@ -118,7 +181,8 @@ function renderCanvas(
   canvas: HTMLCanvasElement,
   content: string,
   settings: ReaderSettings,
-  containerWidth: number
+  containerWidth: number,
+  highlightInfo?: HighlightInfo | null
 ): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -127,33 +191,70 @@ function renderCanvas(
   const { fontSize, theme, fontFamily, lineHeight } = settings;
   const colors = getThemeColors(theme);
 
-  /* Build font string with fallbacks */
   const fontStr = `${fontSize}px "${fontFamily}", "Vazirmatn", Tahoma, "Segoe UI", sans-serif`;
 
-  /* Reset transform before measuring */
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.font = fontStr;
 
-  /* Word-wrap */
   const maxWidth = Math.max(containerWidth - CANVAS_PADDING_X * 2, 60);
-  const lines = wrapTextToLines(ctx, content, maxWidth);
+  const { lines, logicalMap } = wrapTextToLinesMapped(ctx, content, maxWidth);
 
   const lineSpacing = fontSize * lineHeight;
   const totalHeight =
     lines.length * lineSpacing + CANVAS_PADDING_Y * 2;
 
-  /* Size canvas (physical × dpr, CSS at logical) */
   canvas.width = containerWidth * dpr;
   canvas.height = totalHeight * dpr;
   canvas.style.width = `${containerWidth}px`;
   canvas.style.height = `${totalHeight}px`;
 
-  /* Scale context for crisp rendering on HiDPI */
   ctx.scale(dpr, dpr);
 
   /* Background fill */
   ctx.fillStyle = colors.bg;
   ctx.fillRect(0, 0, containerWidth, totalHeight);
+
+  /* Draw highlights (font must be re-set after canvas resize) */
+  if (highlightInfo?.query) {
+    ctx.font = fontStr;
+    const q = highlightInfo.query.toLowerCase();
+    const x = containerWidth - CANVAS_PADDING_X;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lower = line.toLowerCase();
+      let pos = 0;
+      while (pos < lower.length) {
+        const idx = lower.indexOf(q, pos);
+        if (idx === -1) break;
+
+        const beforeText = line.slice(0, idx);
+        const matchText = line.slice(idx, idx + q.length);
+        const beforeW = ctx.measureText(beforeText).width;
+        const matchW = ctx.measureText(matchText).width;
+
+        const matchRight = x - beforeW;
+        const matchLeft = matchRight - matchW;
+
+        const isCurrent =
+          highlightInfo.currentLogicalLine !== null &&
+          highlightInfo.currentLogicalLine !== undefined &&
+          logicalMap[i] === highlightInfo.currentLogicalLine;
+
+        ctx.fillStyle = isCurrent
+          ? "rgba(249, 115, 22, 0.3)"
+          : "rgba(250, 204, 21, 0.3)";
+        ctx.fillRect(
+          matchLeft - 3,
+          CANVAS_PADDING_Y + i * lineSpacing + 1,
+          matchW + 6,
+          lineSpacing - 2
+        );
+
+        pos = idx + q.length;
+      }
+    }
+  }
 
   /* Text settings */
   ctx.font = fontStr;
@@ -162,7 +263,6 @@ function renderCanvas(
   ctx.textAlign = "right";
   ctx.textBaseline = "top";
 
-  /* Draw each line */
   const x = containerWidth - CANVAS_PADDING_X;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i]) {
@@ -188,19 +288,20 @@ export default function BookReader() {
   const updateReaderSettings = useAppStore((s) => s.updateReaderSettings);
   const scrollToLine = useAppStore((s) => s.scrollToLine);
   const setScrollToLine = useAppStore((s) => s.setScrollToLine);
+  const highlightQuery = useAppStore((s) => s.highlightQuery);
+  const setHighlightQuery = useAppStore((s) => s.setHighlightQuery);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [scrollPercent, setScrollPercent] = useState(0);
   const [readerSearchOpen, setReaderSearchOpen] = useState(false);
   const [readerSearchQuery, setReaderSearchQuery] = useState("");
   const [readerSearchResults, setReaderSearchResults] = useState<InBookResult[]>([]);
+  const [currentResultIdx, setCurrentResultIdx] = useState(0);
   const readerSearchInputRef = useRef<HTMLInputElement>(null);
 
-  /* ─── refs ─── */
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  /* ─── derived ─── */
   const colors = useMemo(
     () => getThemeColors(readerSettings.theme),
     [readerSettings.theme]
@@ -218,7 +319,7 @@ export default function BookReader() {
     const q = readerSearchQuery.trim().toLowerCase();
     const lines = bookContent.split("\n");
     const results: InBookResult[] = [];
-    for (let i = 0; i < lines.length && results.length < 30; i++) {
+    for (let i = 0; i < lines.length && results.length < 50; i++) {
       const idx = lines[i].toLowerCase().indexOf(q);
       if (idx !== -1) {
         results.push({ lineIndex: i, text: lines[i], matchStart: idx, matchEnd: idx + q.length });
@@ -227,20 +328,58 @@ export default function BookReader() {
     return results;
   }, [readerSearchQuery, bookContent]);
 
-  useEffect(() => { setReaderSearchResults(inBookResults); }, [inBookResults]);
+  useEffect(() => {
+    setReaderSearchResults(inBookResults);
+    if (inBookResults.length > 0 && currentResultIdx >= inBookResults.length) {
+      setCurrentResultIdx(0);
+    }
+  }, [inBookResults]);
+
+  useEffect(() => {
+    if (readerSearchResults.length > 0 && currentResultIdx < readerSearchResults.length) {
+      const line = readerSearchResults[currentResultIdx].lineIndex;
+      const lineSpacing = readerSettings.fontSize * readerSettings.lineHeight;
+      const targetY = line * lineSpacing + CANVAS_PADDING_Y - 100;
+      wrapperRef.current?.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+    }
+  }, [currentResultIdx, readerSearchResults, readerSettings.fontSize, readerSettings.lineHeight]);
+
+  const handleReaderSearchChange = useCallback((value: string) => {
+    setReaderSearchQuery(value);
+    const trimmed = value.trim();
+    setHighlightQuery(trimmed || null);
+    if (trimmed) setCurrentResultIdx(0);
+  }, [setHighlightQuery]);
 
   const handleReaderSearchClose = useCallback(() => {
     setReaderSearchOpen(false);
     setReaderSearchQuery("");
     setReaderSearchResults([]);
-  }, []);
+    setHighlightQuery(null);
+    setCurrentResultIdx(0);
+  }, [setHighlightQuery]);
 
   const handleReaderResultClick = useCallback((lineIndex: number) => {
-    setScrollToLine(lineIndex);
-    setReaderSearchOpen(false);
-    setReaderSearchQuery("");
-    setReaderSearchResults([]);
-  }, [setScrollToLine]);
+ const idx = readerSearchResults.findIndex((r) => r.lineIndex === lineIndex);
+    if (idx !== -1) setCurrentResultIdx(idx);
+  }, [readerSearchResults]);
+
+  const goNextMatch = useCallback(() => {
+    if (readerSearchResults.length === 0) return;
+    setCurrentResultIdx((prev) => (prev + 1) % readerSearchResults.length);
+  }, [readerSearchResults.length]);
+
+  const goPrevMatch = useCallback(() => {
+    if (readerSearchResults.length === 0) return;
+    setCurrentResultIdx((prev) => (prev - 1 + readerSearchResults.length) % readerSearchResults.length);
+  }, [readerSearchResults.length]);
+
+  const currentLogicalLine = useMemo(() => {
+    if (readerSearchResults.length === 0 || currentResultIdx >= readerSearchResults.length) return null;
+    return readerSearchResults[currentResultIdx].lineIndex;
+  }, [readerSearchResults, currentResultIdx]);
+
+  const activeHighlightQuery = highlightQuery;
 
   /* ═══════════════════════════════════════════════════════════
      Font loading
@@ -265,19 +404,21 @@ export default function BookReader() {
     const canvas = canvasRef.current;
     const wrapper = wrapperRef.current;
     if (!canvas || !wrapper || !fontReady || !bookContent) return;
-    renderCanvas(canvas, bookContent, readerSettings, wrapper.clientWidth);
-  }, [bookContent, readerSettings, fontReady]);
+    renderCanvas(
+      canvas, bookContent, readerSettings, wrapper.clientWidth,
+      activeHighlightQuery
+        ? { query: activeHighlightQuery, currentLogicalLine }
+        : null
+    );
+  }, [bookContent, readerSettings, fontReady, activeHighlightQuery, currentLogicalLine]);
 
-  /* Re-paint when content / settings / font-readiness change */
   useEffect(() => {
     paint();
   }, [paint]);
 
-  /* Re-paint on container resize */
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
-
     const ro = new ResizeObserver(() => paint());
     ro.observe(wrapper);
     return () => ro.disconnect();
@@ -289,7 +430,6 @@ export default function BookReader() {
 
   const selectedBook = useAppStore((s) => s.selectedBook);
 
-  /* Bookmark: restore scroll position after canvas is painted */
   const bookmarkRestoredRef = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedBook || !bookContent) return;
@@ -298,15 +438,13 @@ export default function BookReader() {
     bookmarkRestoredRef.current = bookId;
 
     const timer = setTimeout(() => {
-      /* Priority 1: scroll to search line */
       if (scrollToLine !== null && scrollToLine > 0) {
         const lineSpacing = readerSettings.fontSize * readerSettings.lineHeight;
-        const targetY = scrollToLine * lineSpacing - 100;
+        const targetY = scrollToLine * lineSpacing + CANVAS_PADDING_Y - 100;
         wrapperRef.current?.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
         setScrollToLine(null);
         return;
       }
-      /* Priority 2: restore bookmark */
       const saved = localStorage.getItem(`bookmark-${bookId}`);
       if (saved) {
         const pos = parseFloat(saved);
@@ -337,19 +475,15 @@ export default function BookReader() {
   }, [readerSettings.theme, updateReaderSettings]);
 
   const increaseFont = useCallback(() => {
-    updateReaderSettings({
-      fontSize: Math.min(32, readerSettings.fontSize + 1),
-    });
+    updateReaderSettings({ fontSize: Math.min(32, readerSettings.fontSize + 1) });
   }, [readerSettings.fontSize, updateReaderSettings]);
 
   const decreaseFont = useCallback(() => {
-    updateReaderSettings({
-      fontSize: Math.max(12, readerSettings.fontSize - 1),
-    });
+    updateReaderSettings({ fontSize: Math.max(12, readerSettings.fontSize - 1) });
   }, [readerSettings.fontSize, updateReaderSettings]);
 
   /* ═══════════════════════════════════════════════════════════
-     Anti-copy: prevent context menu & text selection on canvas
+     Anti-copy
      ═══════════════════════════════════════════════════════════ */
 
   const handleCanvasContextMenu = useCallback(
@@ -409,17 +543,36 @@ export default function BookReader() {
                   ref={readerSearchInputRef}
                   type="search"
                   value={readerSearchQuery}
-                  onChange={(e) => setReaderSearchQuery(e.target.value)}
+                  onChange={(e) => handleReaderSearchChange(e.target.value)}
                   placeholder="جستجو در متن این کتاب..."
                   dir="rtl"
                   autoFocus
                   className="h-8 flex-1 rounded-md border-0 bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground/50"
                   style={{ color: colors.text }}
                 />
-                {readerSearchQuery && (
-                  <span className="shrink-0 text-xs tabular-nums font-medium" style={{ color: `${colors.text}60` }}>
-                    {readerSearchResults.length} نتیجه
-                  </span>
+                {readerSearchResults.length > 0 && (
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <button
+                      onClick={goPrevMatch}
+                      className="flex size-7 items-center justify-center rounded-full transition-colors hover:bg-black/10 dark:hover:bg-white/10"
+                      title="نتیجه قبلی"
+                    >
+                      <ChevronUp className="size-3.5" style={{ color: `${colors.text}70` }} />
+                    </button>
+                    <span
+                      className="min-w-[3rem] text-center text-[11px] tabular-nums font-semibold"
+                      style={{ color: `${colors.text}70` }}
+                    >
+                      {currentResultIdx + 1} / {readerSearchResults.length}
+                    </span>
+                    <button
+                      onClick={goNextMatch}
+                      className="flex size-7 items-center justify-center rounded-full transition-colors hover:bg-black/10 dark:hover:bg-white/10"
+                      title="نتیجه بعدی"
+                    >
+                      <ChevronDown className="size-3.5" style={{ color: `${colors.text}70` }} />
+                    </button>
+                  </div>
                 )}
                 <button
                   onClick={handleReaderSearchClose}
@@ -430,11 +583,11 @@ export default function BookReader() {
               </div>
               {readerSearchResults.length > 0 && (
                 <div className="max-h-48 space-y-0.5 overflow-y-auto">
-                  {readerSearchResults.map((r) => (
+                  {readerSearchResults.map((r, ri) => (
                     <button
                       key={r.lineIndex}
                       onClick={() => handleReaderResultClick(r.lineIndex)}
-                      className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-right transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                      className={"flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-right transition-colors " + (ri === currentResultIdx ? "bg-orange-500/15" : "hover:bg-black/5 dark:hover:bg-white/5")}
                     >
                       <span className="mt-0.5 shrink-0 text-[10px] tabular-nums" style={{ color: `${colors.text}50` }}>خط {r.lineIndex + 1}</span>
                       <p className="flex-1 text-xs leading-relaxed" style={{ color: colors.text }}>
@@ -464,7 +617,6 @@ export default function BookReader() {
         className="flex-1 overflow-y-auto overscroll-contain"
         style={{ backgroundColor: colors.bg }}
       >
-        {/* Font-loading indicator */}
         {!fontReady && (
           <div className="flex items-center justify-center py-24">
             <Loader2
@@ -499,7 +651,6 @@ export default function BookReader() {
         }}
       >
         <div className="mx-auto flex max-w-3xl items-center gap-1.5 px-4 py-2 sm:gap-2">
-          {/* Scroll progress */}
           <span
             className="min-w-[3rem] text-center text-[11px] tabular-nums font-medium"
             style={{ color: `${colors.text}80` }}
@@ -509,7 +660,6 @@ export default function BookReader() {
 
           <Separator orientation="vertical" className="mx-0.5 h-5" />
 
-          {/* Font size: decrease */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -527,7 +677,6 @@ export default function BookReader() {
             </TooltipContent>
           </Tooltip>
 
-          {/* Font size value */}
           <span
             className="min-w-[2.5rem] text-center text-xs tabular-nums font-semibold"
             style={{ color: colors.text }}
@@ -535,7 +684,6 @@ export default function BookReader() {
             {readerSettings.fontSize}
           </span>
 
-          {/* Font size: increase */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -553,7 +701,6 @@ export default function BookReader() {
             </TooltipContent>
           </Tooltip>
 
-          {/* Spacer */}
           <div className="flex-1" />
 
           <Tooltip>
@@ -561,8 +708,17 @@ export default function BookReader() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8"
-                onClick={() => setReaderSearchOpen(!readerSearchOpen)}
+                className={"size-8" + (readerSearchOpen ? " bg-accent text-accent-foreground" : "")}
+                onClick={() => {
+                  if (readerSearchOpen) {
+                    handleReaderSearchClose();
+                  } else {
+                    setReaderSearchOpen(true);
+                    if (highlightQuery) {
+                      setReaderSearchQuery(highlightQuery);
+                    }
+                  }
+                }}
               >
                 <Search className="size-4" />
               </Button>
@@ -572,7 +728,6 @@ export default function BookReader() {
             </TooltipContent>
           </Tooltip>
 
-          {/* Theme cycle button */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -585,15 +740,12 @@ export default function BookReader() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">
-              <p>
-                پوسته: {currentThemeMeta.label}
-              </p>
+              <p>پوسته: {currentThemeMeta.label}</p>
             </TooltipContent>
           </Tooltip>
 
           <Separator orientation="vertical" className="mx-0.5 h-5" />
 
-          {/* Settings sheet trigger */}
           <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
             <SheetTrigger asChild>
               <Tooltip>
@@ -617,7 +769,6 @@ export default function BookReader() {
               </SheetHeader>
 
               <div className="flex flex-col gap-7 px-2">
-                {/* ── Font size ── */}
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <Type className="size-4 text-muted-foreground" />
@@ -642,7 +793,6 @@ export default function BookReader() {
 
                 <Separator />
 
-                {/* ── Theme ── */}
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <Palette className="size-4 text-muted-foreground" />
@@ -675,7 +825,6 @@ export default function BookReader() {
 
                 <Separator />
 
-                {/* ── Font family ── */}
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <BookOpen className="size-4 text-muted-foreground" />
@@ -703,7 +852,6 @@ export default function BookReader() {
 
                 <Separator />
 
-                {/* ── Line height ── */}
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <AlignVerticalSpaceAround className="size-4 text-muted-foreground" />
@@ -728,7 +876,6 @@ export default function BookReader() {
 
                 <Separator />
 
-                {/* ── Theme preview swatches ── */}
                 <div className="flex flex-col gap-3">
                   <span className="text-sm font-medium">پیش‌نمایش پوسته</span>
                   <div className="flex gap-3">

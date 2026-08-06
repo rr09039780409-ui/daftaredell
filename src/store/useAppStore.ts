@@ -39,6 +39,7 @@ interface AppState {
   isSeeded: boolean;
   readerSettings: ReaderSettings;
   scrollToLine: number | null;
+  highlightQuery: string | null;
 
   setView: (view: AppView) => void;
   setBooks: (books: Book[]) => void;
@@ -54,6 +55,7 @@ interface AppState {
   setSeeded: (seeded: boolean) => void;
   updateReaderSettings: (settings: Partial<ReaderSettings>) => void;
   setScrollToLine: (line: number | null) => void;
+  setHighlightQuery: (q: string | null) => void;
 }
 
 const THEME_CONFIGS: Record<ReaderTheme, { bg: string; text: string }> = {
@@ -82,6 +84,7 @@ export const useAppStore = create<AppState>()(
       isAdmin: false,
       isSeeded: false,
       scrollToLine: null,
+      highlightQuery: null,
       readerSettings: {
         fontSize: 18,
         theme: "light",
@@ -106,6 +109,7 @@ export const useAppStore = create<AppState>()(
           readerSettings: { ...state.readerSettings, ...settings },
         })),
       setScrollToLine: (scrollToLine) => set({ scrollToLine }),
+      setHighlightQuery: (highlightQuery) => set({ highlightQuery }),
     }),
     {
       name: "bookshelf-storage",

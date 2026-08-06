@@ -436,10 +436,12 @@ function SnippetList({ results, query, loading }: { results: BookSearchResult[];
   const setBookContent = useAppStore((s) => s.setBookContent);
   const setView = useAppStore((s) => s.setView);
   const setScrollToLine = useAppStore((s) => s.setScrollToLine);
+  const setHighlightQuery = useAppStore((s) => s.setHighlightQuery);
 
   const handleClick = async (book: Book, lineIndex: number) => {
     setSelectedBook(book);
     setScrollToLine(lineIndex);
+    setHighlightQuery(query.trim());
     try {
       const res = await fetch("/api/books/" + book.id);
       if (res.ok) { const data = await res.json(); setBookContent(data.content || ""); cacheBookOffline(book, data.content || ""); }
