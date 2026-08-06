@@ -15,6 +15,8 @@ import {
   CalendarDays,
   Lightbulb,
   BookPlus,
+  BookOpen,
+  FileSearch,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -54,6 +56,7 @@ export function Header() {
   const setView = useAppStore((s) => s.setView);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
+  const searchMode = useAppStore((s) => s.searchMode);
   const isAdmin = useAppStore((s) => s.isAdmin);
   const setAdmin = useAppStore((s) => s.setAdmin);
   const selectedBook = useAppStore((s) => s.selectedBook);
@@ -102,6 +105,15 @@ export function Header() {
   const toggleTheme = () => {
     setTheme(resolvedTheme === "dark" ? "light" : "dark");
   };
+
+  const searchPlaceholder = useMemo(() => {
+    switch (searchMode) {
+      case "titles": return "جستجو در عناوین کتاب‌ها...";
+      case "book": return "جستجو در متن کتاب انتخاب‌شده...";
+      case "all": return "جستجو در متن همه کتاب‌ها...";
+      default: return "جستجو...";
+    }
+  }, [searchMode]);
 
   return (
     <div>
@@ -184,9 +196,14 @@ export function Header() {
                   <span className="text-lg font-extrabold leading-tight tracking-tight">
                     کتابخانه
                   </span>
-                  <span className="text-[10px] leading-none text-muted-foreground">
-                    دفتر دل
-                  </span>
+                  <a
+                    href="https://daftaredell.ir/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] leading-none text-muted-foreground transition-colors hover:text-primary"
+                  >
+                    daftaredell.ir
+                  </a>
                 </div>
               </motion.button>
             )}
@@ -209,7 +226,7 @@ export function Header() {
                 <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   type="search"
-                  placeholder="جستجوی کتاب..."
+                  placeholder={searchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-9 pr-9 text-sm"

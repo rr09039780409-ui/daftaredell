@@ -114,7 +114,13 @@ export async function GET(req: NextRequest) {
     const q = req.nextUrl.searchParams.get("q");
     if (q && q.trim()) {
       const query = q.trim().toLowerCase();
-      const allBooks = await db
+      const bookId = req.nextUrl.searchParams.get("bookId");
+      const isSingleBook = !!bookId;
+      const maxSnippets = isSingleBook ? 20 : MAX_SNIPPETS;
+      const maxTotal = isSingleBook ? 50 : MAX_TOTAL;
+
+      /* Build base query */
+      let bookQuery = db
         .select({
           id: books.id,
           title: books.title,
@@ -131,11 +137,16 @@ export async function GET(req: NextRequest) {
         .from(books)
         .leftJoin(categories, eq(books.categoryId, categories.id));
 
+      /* Filter by specific book if bookId provided */
+      const allBooks = isSingleBook
+        ? await bookQuery.where(eq(books.id, bookId))
+        : await bookQuery;
+
       const results: SearchResult[] = [];
       let totalSnippets = 0;
 
       for (const book of allBooks) {
-        if (totalSnippets >= MAX_TOTAL) break;
+        if (totalSnippets >= maxTotal) break;
         const decrypted = decrypt(book.content);
         if (!decrypted.toLowerCase().includes(query)) continue;
 
@@ -152,9 +163,48 @@ export async function GET(req: NextRequest) {
           createdAt: book.createdAt,
           updatedAt: book.updatedAt,
         };
-        const snippets = extractSnippets(decrypted, query);
-        if (snippets.length === 0) continue;
 
+        /* Extract snippets with mode-appropriate limits */
+        const lines = decrypted.split("\n");
+        const lowerLines = lines.map((l) => l.toLowerCase());
+        const snippets: Snippet[] = [];
+        const matchedLines = new Set<number>();
+
+        for (let i = 0; i < lowerLines.length; i++) {
+          if (snippets.length >= maxSnippets) break;
+          const idx = lowerLines[i].indexOf(query);
+          if (idx === -1) continue;
+          if (matchedLines.has(i)) continue;
+          matchedLines.add(i);
+
+          const start = Math.max(0, i - CONTEXT_LINES);
+          const end = Math.min(lines.length, i + CONTEXT_LINES + 1);
+          const contextLines = lines.slice(start, end);
+          let fullText = contextLines.join(" ");
+
+          if (fullText.length > SNIPPET_MAX_CHARS) {
+            let matchOffset = 0;
+            for (let j = start; j < i; j++) matchOffset += lines[j].length + 1;
+            matchOffset += idx;
+            const half = Math.floor(SNIPPET_MAX_CHARS / 2);
+            let trimStart = Math.max(0, matchOffset - half);
+            let trimEnd = Math.min(fullText.length, trimStart + SNIPPET_MAX_CHARS);
+            if (trimEnd === fullText.length) trimStart = Math.max(0, trimEnd - SNIPPET_MAX_CHARS);
+            const matchStart = matchOffset - trimStart;
+            const matchEnd = matchStart + query.length;
+            const prefix = trimStart > 0 ? "..." : "";
+            const suffix = trimEnd < fullText.length ? "..." : "";
+            fullText = prefix + fullText.slice(trimStart, trimEnd) + suffix;
+            snippets.push({ text: fullText, lineIndex: i, matchStart: prefix.length + matchStart, matchEnd: prefix.length + matchEnd });
+          } else {
+            let matchOffset = 0;
+            for (let j = start; j < i; j++) matchOffset += lines[j].length + 1;
+            matchOffset += idx;
+            snippets.push({ text: fullText, lineIndex: i, matchStart: matchOffset, matchEnd: matchOffset + query.length });
+          }
+        }
+
+        if (snippets.length === 0) continue;
         results.push({ book: bookInfo, snippets });
         totalSnippets += snippets.length;
       }

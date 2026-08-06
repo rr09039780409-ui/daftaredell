@@ -2,12 +2,20 @@
 
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BookX, SearchX, Filter, X, Sparkles, ChevronLeft, BookOpen } from "lucide-react";
-import { useAppStore, type Book } from "@/store/useAppStore";
+import { BookX, SearchX, Filter, X, Sparkles, ChevronLeft, BookOpen, Library, FileSearch } from "lucide-react";
+import { useAppStore, type Book, type SearchMode } from "@/store/useAppStore";
 import BookCard from "@/components/BookCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 interface BookGridProps {
   books: Book[];
@@ -25,7 +33,6 @@ interface BookSearchResult {
   snippets: SearchSnippet[];
 }
 
-/* IndexedDB for offline book cache */
 const DB_NAME = "bookshelf-offline";
 const DB_VERSION = 1;
 const STORE_NAME = "books";
@@ -73,7 +80,6 @@ export async function getCachedBooks(): Promise<(Book & { content?: string })[]>
 const containerVariants = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const itemVariants = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
 
-/* Highlight text with search marks */
 function HighlightText({ text, query }: { text: string; query: string }) {
   if (!query) return <span>{text}</span>;
   const lower = text.toLowerCase();
@@ -103,7 +109,6 @@ function HighlightText({ text, query }: { text: string; query: string }) {
   );
 }
 
-/* Highlight with exact positions from API */
 function HighlightSnippet({ text, query, matchStart, matchEnd }: { text: string; query: string; matchStart: number; matchEnd: number }) {
   const before = text.slice(0, matchStart);
   const match = text.slice(matchStart, matchEnd);
@@ -117,8 +122,109 @@ function HighlightSnippet({ text, query, matchStart, matchEnd }: { text: string;
   );
 }
 
+const SEARCH_MODES: { value: SearchMode; label: string; icon: typeof Library }[] = [
+  { value: "titles", label: "عناوین کتاب‌ها", icon: Library },
+  { value: "book", label: "متن یک کتاب", icon: BookOpen },
+  { value: "all", label: "همه کتاب‌ها", icon: FileSearch },
+];
+
+function SearchModeTabs() {
+  const searchMode = useAppStore((s) => s.searchMode);
+  const setSearchMode = useAppStore((s) => s.setSearchMode);
+  const searchBookId = useAppStore((s) => s.searchBookId);
+  const setSearchBookId = useAppStore((s) => s.setSearchBookId);
+  const books = useAppStore((s) => s.books);
+  const searchQuery = useAppStore((s) => s.searchQuery);
+
+  const selectedBookForSearch = useMemo(
+    () => books.find((b) => b.id === searchBookId),
+    [books, searchBookId]
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+        {SEARCH_MODES.map((mode) => {
+          const Icon = mode.icon;
+          const isActive = searchMode === mode.value;
+          return (
+            <button
+              key={mode.value}
+              onClick={() => setSearchMode(mode.value)}
+              className={cn(
+                "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all",
+                isActive
+                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                  : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              )}
+            >
+              <Icon className="size-3.5" />
+              <span>{mode.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <AnimatePresence>
+        {searchMode === "book" && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 0 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-center gap-2 pt-1">
+              <BookOpen className="size-4 shrink-0 text-primary" />
+              <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                انتخاب کتاب:
+              </span>
+              <Select
+                dir="rtl"
+                value={searchBookId || ""}
+                onValueChange={(v) => setSearchBookId(v)}
+              >
+                <SelectTrigger className="h-8 flex-1 text-xs">
+                  <SelectValue placeholder={searchQuery ? "کتابی را انتخاب کنید..." : "ابتدا کتابی انتخاب کنید"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {books.map((book) => (
+                    <SelectItem key={book.id} value={book.id}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="size-2.5 rounded-full"
+                          style={{ backgroundColor: book.coverColor }}
+                        />
+                        <span className="truncate">{book.title}</span>
+                        {book.author && (
+                          <span className="text-muted-foreground">— {book.author}</span>
+                        )}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedBookForSearch && (
+                <Badge variant="secondary" className="shrink-0 gap-1 text-[10px]">
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: selectedBookForSearch.coverColor }}
+                  />
+                  {selectedBookForSearch.title}
+                </Badge>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function BookGrid({ books }: BookGridProps) {
   const searchQuery = useAppStore((s) => s.searchQuery);
+  const searchMode = useAppStore((s) => s.searchMode);
+  const searchBookId = useAppStore((s) => s.searchBookId);
   const selectedCategoryId = useAppStore((s) => s.selectedCategoryId);
   const setSelectedCategoryId = useAppStore((s) => s.setSelectedCategoryId);
   const categories = useAppStore((s) => s.categories);
@@ -132,6 +238,7 @@ export default function BookGrid({ books }: BookGridProps) {
   }, [books, selectedCategoryId]);
 
   const textFiltered = useMemo(() => {
+    if (searchMode !== "titles") return categoryFiltered;
     if (!searchQuery.trim()) return categoryFiltered;
     const q = searchQuery.trim().toLowerCase();
     return categoryFiltered.filter((b) =>
@@ -139,18 +246,38 @@ export default function BookGrid({ books }: BookGridProps) {
       b.author.toLowerCase().includes(q) ||
       b.description.toLowerCase().includes(q)
     );
-  }, [categoryFiltered, searchQuery]);
+  }, [categoryFiltered, searchQuery, searchMode]);
 
   const searchContent = useCallback(async (query: string) => {
-    if (!query.trim()) { setContentResults([]); setIsSearchingContent(false); return; }
+    if (!query.trim() || searchMode === "titles") {
+      setContentResults([]);
+      setIsSearchingContent(false);
+      return;
+    }
+    if (searchMode === "book" && !searchBookId) {
+      setContentResults([]);
+      setIsSearchingContent(false);
+      return;
+    }
     setIsSearchingContent(true);
     try {
-      const res = await fetch("/api/books?q=" + encodeURIComponent(query.trim()));
-      if (res.ok) { const data = await res.json(); setContentResults(Array.isArray(data) ? data : []); }
-      else { setContentResults([]); }
-    } catch { setContentResults([]); }
-    finally { setIsSearchingContent(false); }
-  }, []);
+      let url = "/api/books?q=" + encodeURIComponent(query.trim());
+      if (searchMode === "book" && searchBookId) {
+        url += "&bookId=" + encodeURIComponent(searchBookId);
+      }
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setContentResults(Array.isArray(data) ? data : []);
+      } else {
+        setContentResults([]);
+      }
+    } catch {
+      setContentResults([]);
+    } finally {
+      setIsSearchingContent(false);
+    }
+  }, [searchMode, searchBookId]);
 
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -162,53 +289,122 @@ export default function BookGrid({ books }: BookGridProps) {
   const hasContentResults = contentResults.length > 0;
   const totalSnippets = useMemo(() => contentResults.reduce((s, r) => s + r.snippets.length, 0), [contentResults]);
 
+  const showTitleResults = searchMode === "titles";
+  const showContentResults = (searchMode === "book" || searchMode === "all") && isSearching;
+  const needsBookSelection = searchMode === "book" && !searchBookId && isSearching;
+
   return (
     <div dir="rtl" className="flex flex-col gap-4">
       {!isSearching && <RecentBanner books={books} />}
 
-      {/* Category filter bar */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        <Filter className="size-4 shrink-0 text-muted-foreground" />
-        <Button variant={!selectedCategoryId ? "default" : "outline"} size="sm" className="shrink-0 text-xs" onClick={() => setSelectedCategoryId(null)}>همه</Button>
-        {categories.map((cat) => (
-          <Button key={cat.id} variant={selectedCategoryId === cat.id ? "default" : "outline"} size="sm" className="shrink-0 text-xs" onClick={() => setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id)}>
-            {cat.name}
-            <Badge variant="secondary" className="mr-1.5 px-1.5 py-0 text-[10px]">{cat._count.books}</Badge>
-          </Button>
-        ))}
-      </div>
+      <SearchModeTabs />
 
-      {/* Search status */}
+      {(searchMode === "titles" || !isSearching) && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <Filter className="size-4 shrink-0 text-muted-foreground" />
+          <Button variant={!selectedCategoryId ? "default" : "outline"} size="sm" className="shrink-0 text-xs" onClick={() => setSelectedCategoryId(null)}>همه</Button>
+          {categories.map((cat) => (
+            <Button key={cat.id} variant={selectedCategoryId === cat.id ? "default" : "outline"} size="sm" className="shrink-0 text-xs" onClick={() => setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id)}>
+              {cat.name}
+              <Badge variant="secondary" className="mr-1.5 px-1.5 py-0 text-[10px]">{cat._count.books}</Badge>
+            </Button>
+          ))}
+        </div>
+      )}
+
       {isSearching && (
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2">
-          {(textFiltered.length > 0 || hasContentResults) ? (
-            <p className="text-muted-foreground text-sm">
-              {textFiltered.length > 0 && (textFiltered.length + " کتاب")}
-              {textFiltered.length > 0 && hasContentResults && " + "}
-              {hasContentResults && (totalSnippets + " نتیجه در متن")}
-              {" یافت شد"}
-            </p>
-          ) : !isSearchingContent ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <SearchX className="size-4" />
-              <p className="text-sm">نتیجه‌ای یافت نشد - عبارت دیگری را امتحان کنید</p>
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
+          {needsBookSelection && (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+              <BookOpen className="size-4 shrink-0 text-amber-500" />
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                برای جستجو در متن کتاب، ابتدا یک کتاب را از لیست بالا انتخاب کنید
+              </p>
             </div>
-          ) : null}
+          )}
+
+          {!needsBookSelection && (
+            <>
+              {showTitleResults && (textFiltered.length > 0 || !isSearchingContent) && (
+                <div className="flex items-center gap-2">
+                  {textFiltered.length > 0 ? (
+                    <p className="text-muted-foreground text-sm">
+                      {textFiltered.length} کتاب یافت شد
+                    </p>
+                  ) : (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <SearchX className="size-4" />
+                      <p className="text-sm">نتیجه‌ای یافت نشد - عبارت دیگری را امتحان کنید</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {showContentResults && (hasContentResults || !isSearchingContent) && (
+                <div className="flex items-center gap-2">
+                  {hasContentResults ? (
+                    <p className="text-muted-foreground text-sm">
+                      {searchMode === "book"
+                        ? `${totalSnippets} نتیجه در کتاب انتخاب‌شده`
+                        : `${contentResults.length} کتاب + ${totalSnippets} نتیجه در متن`
+                      }
+                    </p>
+                  ) : !needsBookSelection && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <SearchX className="size-4" />
+                      <p className="text-sm">
+                        {searchMode === "book"
+                          ? "نتیجه‌ای در این کتاب یافت نشد"
+                          : "نتیجه‌ای در متن کتاب‌ها یافت نشد"
+                        }
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </motion.div>
       )}
 
-      {/* Content search results */}
-      {hasContentResults ? (
+      {showContentResults && hasContentResults ? (
         <SnippetList results={contentResults} query={searchQuery.trim()} loading={isSearchingContent} />
       ) : null}
 
-      {/* Book grid */}
-      <div className={hasContentResults ? "hidden" : ""}>
-        {textFiltered.length > 0 ? (
+      <div className={(showContentResults && hasContentResults) ? "hidden" : ""}>
+        {showTitleResults ? (
+          textFiltered.length > 0 ? (
+            <div className="max-h-[calc(100vh-16rem)] overflow-y-auto">
+              <motion.div variants={containerVariants} initial="hidden" animate="show" key={searchQuery + (selectedCategoryId || "all")} className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                <AnimatePresence mode="popLayout">
+                  {textFiltered.map((book) => (
+                    <motion.div key={book.id} variants={itemVariants} layout>
+                      <BookCard book={book} />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            </div>
+          ) : isSearching ? (
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 200, damping: 20 }} className="flex flex-col items-center justify-center gap-4 py-20">
+              <div className="bg-muted flex h-24 w-24 items-center justify-center rounded-full">
+                <BookX className="text-muted-foreground h-12 w-12" />
+              </div>
+              <p className="text-muted-foreground text-lg font-medium">
+                {selectedCategoryId ? "کتابی در این دسته‌بندی یافت نشد" : "کتابی یافت نشد"}
+              </p>
+              {selectedCategoryId && (
+                <Button variant="outline" size="sm" onClick={() => setSelectedCategoryId(null)} className="gap-1.5">
+                  <X className="size-3.5" />
+                  نمایش همه کتاب‌ها
+                </Button>
+              )}
+            </motion.div>
+          ) : null
+        ) : !isSearching ? (
           <div className="max-h-[calc(100vh-16rem)] overflow-y-auto">
-            <motion.div variants={containerVariants} initial="hidden" animate="show" key={searchQuery + (selectedCategoryId || "all")} className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            <motion.div variants={containerVariants} initial="hidden" animate="show" key={"all-" + (selectedCategoryId || "all")} className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
               <AnimatePresence mode="popLayout">
-                {textFiltered.map((book) => (
+                {categoryFiltered.map((book) => (
                   <motion.div key={book.id} variants={itemVariants} layout>
                     <BookCard book={book} />
                   </motion.div>
@@ -216,28 +412,12 @@ export default function BookGrid({ books }: BookGridProps) {
               </AnimatePresence>
             </motion.div>
           </div>
-        ) : isSearching ? (
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 200, damping: 20 }} className="flex flex-col items-center justify-center gap-4 py-20">
-            <div className="bg-muted flex h-24 w-24 items-center justify-center rounded-full">
-              <BookX className="text-muted-foreground h-12 w-12" />
-            </div>
-            <p className="text-muted-foreground text-lg font-medium">
-              {selectedCategoryId ? "کتابی در این دسته‌بندی یافت نشد" : "کتابی یافت نشد"}
-            </p>
-            {selectedCategoryId && (
-              <Button variant="outline" size="sm" onClick={() => setSelectedCategoryId(null)} className="gap-1.5">
-                <X className="size-3.5" />
-                نمایش همه کتاب‌ها
-              </Button>
-            )}
-          </motion.div>
         ) : null}
       </div>
     </div>
   );
 }
 
-/* Snippet list for content search results */
 function SnippetList({ results, query, loading }: { results: BookSearchResult[]; query: string; loading: boolean }) {
   const setSelectedBook = useAppStore((s) => s.setSelectedBook);
   const setBookContent = useAppStore((s) => s.setBookContent);
@@ -265,7 +445,6 @@ function SnippetList({ results, query, loading }: { results: BookSearchResult[];
     <div className="max-h-[calc(100vh-14rem)] space-y-3 overflow-y-auto">
       {results.map((result, ri) => (
         <motion.div key={result.book.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: ri * 0.04 }} className="overflow-hidden rounded-xl border">
-          {/* Book header */}
           <div className="flex items-center gap-2.5 px-3.5 py-2.5" style={{ backgroundColor: result.book.coverColor + "12" }}>
             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: result.book.coverColor + "30" }}>
               <BookOpen className="size-4" style={{ color: result.book.coverColor }} />
@@ -282,8 +461,6 @@ function SnippetList({ results, query, loading }: { results: BookSearchResult[];
             </div>
             <Badge variant="outline" className="shrink-0 text-[10px]">{result.snippets.length} نتیجه</Badge>
           </div>
-
-          {/* Snippets */}
           <div className="divide-y">
             {result.snippets.map((snip, si) => (
               <button key={si + "-" + snip.lineIndex} onClick={() => handleClick(result.book, snip.lineIndex)} className="flex w-full items-start gap-2.5 px-3.5 py-2.5 text-right transition-colors hover:bg-accent/50">
@@ -301,7 +478,6 @@ function SnippetList({ results, query, loading }: { results: BookSearchResult[];
   );
 }
 
-/* Recent books banner */
 function RecentBanner({ books }: { books: Book[] }) {
   const [dismissed, setDismissed] = useState(false);
   const setSelectedBook = useAppStore((s) => s.setSelectedBook);

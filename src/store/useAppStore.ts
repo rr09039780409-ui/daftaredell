@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 
 export type AppView = "library" | "reader" | "admin";
 export type ReaderTheme = "light" | "dark" | "sepia";
+export type SearchMode = "titles" | "book" | "all";
 
 export interface Book {
   id: string;
@@ -30,6 +31,8 @@ interface AppState {
   bookContent: string;
   categories: { id: string; name: string; _count: { books: number } }[];
   searchQuery: string;
+  searchMode: SearchMode;
+  searchBookId: string | null;
   selectedCategoryId: string | null;
   isAdmin: boolean;
   isSeeded: boolean;
@@ -42,6 +45,8 @@ interface AppState {
   setBookContent: (content: string) => void;
   setCategories: (categories: AppState["categories"]) => void;
   setSearchQuery: (query: string) => void;
+  setSearchMode: (mode: SearchMode) => void;
+  setSearchBookId: (id: string | null) => void;
   setSelectedCategoryId: (id: string | null) => void;
   setAdmin: (isAdmin: boolean) => void;
   setSeeded: (seeded: boolean) => void;
@@ -68,6 +73,8 @@ export const useAppStore = create<AppState>()(
       bookContent: "",
       categories: [],
       searchQuery: "",
+      searchMode: "titles" as SearchMode,
+      searchBookId: null,
       selectedCategoryId: null,
       isAdmin: false,
       isSeeded: false,
@@ -85,6 +92,8 @@ export const useAppStore = create<AppState>()(
       setBookContent: (content) => set({ bookContent: content }),
       setCategories: (categories) => set({ categories }),
       setSearchQuery: (searchQuery) => set({ searchQuery }),
+      setSearchMode: (searchMode) => set({ searchMode, searchBookId: null }),
+      setSearchBookId: (searchBookId) => set({ searchBookId }),
       setSelectedCategoryId: (selectedCategoryId) => set({ selectedCategoryId }),
       setAdmin: (isAdmin) => set({ isAdmin }),
       setSeeded: (isSeeded) => set({ isSeeded }),
