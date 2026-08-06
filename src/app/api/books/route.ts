@@ -6,9 +6,9 @@ import { NextRequest, NextResponse } from "next/server";
 /* ═══════════════════════════════════════════════════════════════
    Snippet extraction utility
    ═══════════════════════════════════════════════════════════════ */
-const CONTEXT_LINES = 1;    /* lines before/after the match */
-const MAX_SNIPPETS = 5;     /* per book */
-const MAX_TOTAL = 40;       /* across all books */
+const CONTEXT_LINES = 1;
+const MAX_SNIPPETS = 5;
+const MAX_TOTAL = 40;
 const SNIPPET_MAX_CHARS = 200;
 
 interface Snippet {
@@ -43,27 +43,21 @@ function extractSnippets(text: string, query: string): Snippet[] {
     if (matchedLines.size >= MAX_SNIPPETS) break;
     const idx = lowerLines[i].indexOf(query);
     if (idx === -1) continue;
-
-    /* Avoid duplicate context for adjacent matches */
     if (matchedLines.has(i)) continue;
     matchedLines.add(i);
 
-    /* Build context window */
     const start = Math.max(0, i - CONTEXT_LINES);
     const end = Math.min(lines.length, i + CONTEXT_LINES + 1);
     const contextLines = lines.slice(start, end);
     let fullText = contextLines.join(" ");
 
-    /* Trim to max chars */
     if (fullText.length > SNIPPET_MAX_CHARS) {
-      /* Find the match position within the full text */
       let matchOffset = 0;
       for (let j = start; j < i; j++) {
-        matchOffset += lines[j].length + 1; /* +1 for the space we joined with */
+        matchOffset += lines[j].length + 1;
       }
       matchOffset += idx;
 
-      /* Center the window around the match */
       const half = Math.floor(SNIPPET_MAX_CHARS / 2);
       let trimStart = Math.max(0, matchOffset - half);
       let trimEnd = Math.min(fullText.length, trimStart + SNIPPET_MAX_CHARS);
@@ -74,7 +68,6 @@ function extractSnippets(text: string, query: string): Snippet[] {
       const matchStart = matchOffset - trimStart;
       const matchEnd = matchStart + query.length;
 
-      /* Adjust for ellipsis */
       const prefix = trimStart > 0 ? "..." : "";
       const suffix = trimEnd < fullText.length ? "..." : "";
 
@@ -89,7 +82,6 @@ function extractSnippets(text: string, query: string): Snippet[] {
         matchEnd: finalMatchEnd,
       });
     } else {
-      /* Calculate match position within joined text */
       let matchOffset = 0;
       for (let j = start; j < i; j++) {
         matchOffset += lines[j].length + 1;
@@ -106,6 +98,97 @@ function extractSnippets(text: string, query: string): Snippet[] {
   }
 
   return snippets;
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const q = req.nextUrl.searchParams.get("q");
+    if (q && q.trim()) {
+      const query = q.trim().toLowerCase();
+      const allBooks = await db
+        .select({
+          id: books.id,
+          title: books.title,
+          author: books.author,
+          description: books.description,
+          coverColor: books.coverColor,
+          categoryId: books.categoryId,
+          createdAt: books.createdAt,
+          updatedAt: books.updatedAt,
+          content: books.content,
+          categoryName: categories.name,
+          categoryIdCat: categories.id,
+        })
+        .from(books)
+        .leftJoin(categories, eq(books.categoryId, categories.id));
+
+      const results: SearchResult[] = [];
+      let totalSnippets = 0;
+
+      for (const book of allBooks) {
+        if (totalSnippets >= MAX_TOTAL) break;
+        const decrypted = decrypt(book.content);
+        if (!decrypted.toLowerCase().includes(query)) continue;
+
+        const bookInfo = {
+          id: book.id,
+          title: book.title,
+          author: book.author,
+          description: book.description,
+          coverColor: book.coverColor,
+          categoryId: book.categoryId,
+          category: book.categoryIdCat && book.categoryName
+            ? { id: book.categoryIdCat, name: book.categoryName }
+            : null,
+          createdAt: book.createdAt,
+          updatedAt: book.updatedAt,
+        };
+        const snippets = extractSnippets(decrypted, query);
+        if (snippets.length === 0) continue;
+
+        results.push({ book: bookInfo, snippets });
+        totalSnippets += snippets.length;
+      }
+
+      return NextResponse.json(results);
+    }
+
+    const rows = await db
+      .select({
+        id: books.id,
+        title: books.title,
+        author: books.author,
+        description: books.description,
+        coverColor: books.coverColor,
+        categoryId: books.categoryId,
+        createdAt: books.createdAt,
+        updatedAt: books.updatedAt,
+        categoryName: categories.name,
+        categoryIdCat: categories.id,
+      })
+      .from(books)
+      .leftJoin(categories, eq(books.categoryId, categories.id))
+      .orderBy(desc(books.createdAt));
+
+    const result = rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      author: r.author,
+      description: r.description,
+      coverColor: r.coverColor,
+      categoryId: r.categoryId,
+      category: r.categoryIdCat && r.categoryName
+        ? { id: r.categoryIdCat, name: r.categoryName }
+        : null,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }));
+
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("GET /api/books error:", error);
+    return NextResponse.json({ error: "خطا در دریافت کتاب‌ها" }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -131,7 +214,6 @@ export async function POST(req: NextRequest) {
 
     const crypto = await import("crypto");
     
-    /* Verify admin password */
     const [setting] = await db
       .select()
       .from(appSettings)
@@ -142,7 +224,6 @@ export async function POST(req: NextRequest) {
     const inputHash = hashPassword(adminPassword);
     if (inputHash !== setting.value) return NextResponse.json({ error: "رمز ادمین اشتباه است" }, { status: 403 });
 
-    /* Encrypt content */
     const key = crypto.scryptSync("bookshelf-secure-key-32byte!!", "bookshelf-salt", 32);
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
@@ -165,5 +246,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "خطا در ایجاد کتاب", detail: String(error) }, { status: 500 });
   }
 }
-
-
