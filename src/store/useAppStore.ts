@@ -33,6 +33,7 @@ interface AppState {
   searchQuery: string;
   searchMode: SearchMode;
   searchBookId: string | null;
+  searchExpanded: boolean;
   selectedCategoryId: string | null;
   isAdmin: boolean;
   isSeeded: boolean;
@@ -47,6 +48,7 @@ interface AppState {
   setSearchQuery: (query: string) => void;
   setSearchMode: (mode: SearchMode) => void;
   setSearchBookId: (id: string | null) => void;
+  setSearchExpanded: (expanded: boolean) => void;
   setSelectedCategoryId: (id: string | null) => void;
   setAdmin: (isAdmin: boolean) => void;
   setSeeded: (seeded: boolean) => void;
@@ -75,6 +77,7 @@ export const useAppStore = create<AppState>()(
       searchQuery: "",
       searchMode: "titles" as SearchMode,
       searchBookId: null,
+      searchExpanded: false,
       selectedCategoryId: null,
       isAdmin: false,
       isSeeded: false,
@@ -94,6 +97,7 @@ export const useAppStore = create<AppState>()(
       setSearchQuery: (searchQuery) => set({ searchQuery }),
       setSearchMode: (searchMode) => set({ searchMode, searchBookId: null }),
       setSearchBookId: (searchBookId) => set({ searchBookId }),
+      setSearchExpanded: (searchExpanded) => set({ searchExpanded }),
       setSelectedCategoryId: (selectedCategoryId) => set({ selectedCategoryId }),
       setAdmin: (isAdmin) => set({ isAdmin }),
       setSeeded: (isSeeded) => set({ isSeeded }),

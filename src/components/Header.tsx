@@ -57,6 +57,7 @@ export function Header() {
   const searchQuery = useAppStore((s) => s.searchQuery);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const searchMode = useAppStore((s) => s.searchMode);
+  const setSearchExpanded = useAppStore((s) => s.setSearchExpanded);
   const isAdmin = useAppStore((s) => s.isAdmin);
   const setAdmin = useAppStore((s) => s.setAdmin);
   const selectedBook = useAppStore((s) => s.selectedBook);
@@ -174,17 +175,13 @@ export function Header() {
                 )}
               </motion.div>
             ) : (
-              <motion.button
+              <motion.div
                 key="library-title"
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 6 }}
                 transition={{ duration: 0.25 }}
-                onClick={() => setView("library")}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-accent",
-                  view === "library" && "pointer-events-none"
-                )}
+                className="flex items-center gap-2 rounded-md px-2 py-1"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -200,12 +197,13 @@ export function Header() {
                     href="https://daftaredell.ir/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[10px] leading-none text-muted-foreground transition-colors hover:text-primary"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-[10px] leading-none text-muted-foreground transition-colors hover:text-primary hover:underline"
                   >
                     daftaredell.ir
                   </a>
                 </div>
-              </motion.button>
+              </motion.div>
             )}
           </AnimatePresence>
 
@@ -229,6 +227,7 @@ export function Header() {
                   placeholder={searchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => setSearchExpanded(true)}
                   className="h-9 pr-9 text-sm"
                   dir="rtl"
                 />

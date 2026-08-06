@@ -2,12 +2,11 @@
 
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BookX, SearchX, Filter, X, Sparkles, ChevronLeft, BookOpen, Library, FileSearch } from "lucide-react";
+import { BookX, SearchX, Filter, X, ChevronLeft, BookOpen, Library, FileSearch } from "lucide-react";
 import { useAppStore, type Book, type SearchMode } from "@/store/useAppStore";
 import BookCard from "@/components/BookCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -225,6 +224,8 @@ export default function BookGrid({ books }: BookGridProps) {
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchMode = useAppStore((s) => s.searchMode);
   const searchBookId = useAppStore((s) => s.searchBookId);
+  const searchExpanded = useAppStore((s) => s.searchExpanded);
+  const setSearchExpanded = useAppStore((s) => s.setSearchExpanded);
   const selectedCategoryId = useAppStore((s) => s.selectedCategoryId);
   const setSelectedCategoryId = useAppStore((s) => s.setSelectedCategoryId);
   const categories = useAppStore((s) => s.categories);
@@ -286,6 +287,7 @@ export default function BookGrid({ books }: BookGridProps) {
   }, [searchQuery, searchContent]);
 
   const isSearching = searchQuery.trim().length > 0;
+  const showSearchTabs = searchExpanded || isSearching;
   const hasContentResults = contentResults.length > 0;
   const totalSnippets = useMemo(() => contentResults.reduce((s, r) => s + r.snippets.length, 0), [contentResults]);
 
@@ -295,11 +297,21 @@ export default function BookGrid({ books }: BookGridProps) {
 
   return (
     <div dir="rtl" className="flex flex-col gap-4">
-      {!isSearching && <RecentBanner books={books} />}
+      <AnimatePresence>
+        {showSearchTabs && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <SearchModeTabs />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <SearchModeTabs />
-
-      {(searchMode === "titles" || !isSearching) && (
+      {(searchMode === "titles" || (!isSearching && !searchExpanded)) && (
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           <Filter className="size-4 shrink-0 text-muted-foreground" />
           <Button variant={!selectedCategoryId ? "default" : "outline"} size="sm" className="shrink-0 text-xs" onClick={() => setSelectedCategoryId(null)}>همه</Button>
@@ -478,59 +490,3 @@ function SnippetList({ results, query, loading }: { results: BookSearchResult[];
   );
 }
 
-function RecentBanner({ books }: { books: Book[] }) {
-  const [dismissed, setDismissed] = useState(false);
-  const setSelectedBook = useAppStore((s) => s.setSelectedBook);
-  const setBookContent = useAppStore((s) => s.setBookContent);
-  const setView = useAppStore((s) => s.setView);
-
-  const recent = useMemo(() => {
-    const w = 7 * 24 * 60 * 60 * 1000;
-    return books.filter((b) => Date.now() - new Date(b.createdAt).getTime() < w).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [books]);
-
-  if (dismissed || recent.length === 0) return null;
-
-  const openBook = async (book: Book) => {
-    setSelectedBook(book);
-    try {
-      const res = await fetch("/api/books/" + book.id);
-      if (res.ok) { const d = await res.json(); setBookContent(d.content || ""); cacheBookOffline(book, d.content || ""); }
-    } catch { setBookContent(""); }
-    setView("reader");
-  };
-
-  return (
-    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-l from-primary/5 via-primary/10 to-background">
-      <div className="flex items-center justify-between px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <div className="flex size-7 items-center justify-center rounded-lg bg-primary/15">
-            <Sparkles className="size-3.5 text-primary" />
-          </div>
-          <span className="text-sm font-semibold">تازه‌های کتابخانه</span>
-          <Badge variant="secondary" className="text-[10px]">{recent.length} کتاب جدید</Badge>
-        </div>
-        <Button variant="ghost" size="icon" className="size-6" onClick={() => setDismissed(true)}>
-          <X className="size-3" />
-        </Button>
-      </div>
-      <div className="flex gap-2.5 overflow-x-auto px-4 pb-3">
-        {recent.slice(0, 8).map((book) => (
-          <Card key={book.id} className="w-36 shrink-0 cursor-pointer overflow-hidden rounded-xl border-0 py-0 shadow-sm transition-shadow hover:shadow-md" onClick={() => openBook(book)}>
-            <div className="flex h-20 w-full items-center justify-center" style={{ backgroundColor: book.coverColor }}>
-              <Sparkles className="size-8 text-white/80" />
-            </div>
-            <CardContent className="p-2.5">
-              <p className="line-clamp-1 text-xs font-bold leading-tight">{book.title}</p>
-              <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground">{book.author}</p>
-              <div className="mt-1.5 flex items-center gap-1">
-                <Badge className="text-[8px] px-1.5 py-0">جدید</Badge>
-                <ChevronLeft className="size-2.5 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </motion.div>
-  );
-}
