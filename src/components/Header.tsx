@@ -62,6 +62,7 @@ export function Header() {
   const setAdmin = useAppStore((s) => s.setAdmin);
   const selectedBook = useAppStore((s) => s.selectedBook);
   const books = useAppStore((s) => s.books);
+  const setHighlightQuery = useAppStore((s) => s.setHighlightQuery);
 
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -101,6 +102,7 @@ export function Header() {
 
   const handleBackToLibrary = () => {
     setView("library");
+    setHighlightQuery(null);
   };
 
   const toggleTheme = () => {

@@ -33,11 +33,13 @@ interface AppState {
   searchQuery: string;
   searchMode: SearchMode;
   searchBookId: string | null;
+  searchExpanded: boolean;
   selectedCategoryId: string | null;
   isAdmin: boolean;
   isSeeded: boolean;
   readerSettings: ReaderSettings;
   scrollToLine: number | null;
+  highlightQuery: string | null;
 
   setView: (view: AppView) => void;
   setBooks: (books: Book[]) => void;
@@ -47,11 +49,13 @@ interface AppState {
   setSearchQuery: (query: string) => void;
   setSearchMode: (mode: SearchMode) => void;
   setSearchBookId: (id: string | null) => void;
+  setSearchExpanded: (expanded: boolean) => void;
   setSelectedCategoryId: (id: string | null) => void;
   setAdmin: (isAdmin: boolean) => void;
   setSeeded: (seeded: boolean) => void;
   updateReaderSettings: (settings: Partial<ReaderSettings>) => void;
   setScrollToLine: (line: number | null) => void;
+  setHighlightQuery: (q: string | null) => void;
 }
 
 const THEME_CONFIGS: Record<ReaderTheme, { bg: string; text: string }> = {
@@ -75,10 +79,12 @@ export const useAppStore = create<AppState>()(
       searchQuery: "",
       searchMode: "titles" as SearchMode,
       searchBookId: null,
+      searchExpanded: false,
       selectedCategoryId: null,
       isAdmin: false,
       isSeeded: false,
       scrollToLine: null,
+      highlightQuery: null,
       readerSettings: {
         fontSize: 18,
         theme: "light",
@@ -94,6 +100,7 @@ export const useAppStore = create<AppState>()(
       setSearchQuery: (searchQuery) => set({ searchQuery }),
       setSearchMode: (searchMode) => set({ searchMode, searchBookId: null }),
       setSearchBookId: (searchBookId) => set({ searchBookId }),
+      setSearchExpanded: (searchExpanded) => set({ searchExpanded }),
       setSelectedCategoryId: (selectedCategoryId) => set({ selectedCategoryId }),
       setAdmin: (isAdmin) => set({ isAdmin }),
       setSeeded: (isSeeded) => set({ isSeeded }),
@@ -102,6 +109,7 @@ export const useAppStore = create<AppState>()(
           readerSettings: { ...state.readerSettings, ...settings },
         })),
       setScrollToLine: (scrollToLine) => set({ scrollToLine }),
+      setHighlightQuery: (highlightQuery) => set({ highlightQuery }),
     }),
     {
       name: "bookshelf-storage",
