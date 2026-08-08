@@ -12,6 +12,7 @@ import {
   BookMarked,
   Sun,
   Moon,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -385,7 +386,18 @@ export default function AuthScreen() {
             </AnimatePresence>
           </div>
         </div>
-
+		
+        {/* Admin quick access */}
+        <div className="flex justify-center">
+          <button
+            onClick={() => useAppStore.getState().setAdmin(true)}
+            className="flex items-center gap-1.5 text-xs transition-colors hover:opacity-80"
+            style={{ color: mutedColor }}
+          >
+            <Shield className="size-3.5" />
+            ورود به حالت مدیریت
+          </button>
+        </div>
         {/* Theme toggle */}
         {mounted && (
           <div className="mt-6 flex justify-center">
