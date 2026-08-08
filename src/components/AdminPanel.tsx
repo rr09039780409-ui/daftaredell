@@ -1452,7 +1452,7 @@ function UsersTab() {
         </div>
       ) : (
         <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-          {/* Pending users first */
+          {/* Pending users first */}
           {usersList
             .filter((u) => u.status === "pending")
             .map((user, i) => (
@@ -1501,7 +1501,7 @@ function UsersTab() {
               </motion.div>
             ))}
 
-          {/* Approved/Rejected users */
+          {/* Approved/Rejected users */}
           {usersList
             .filter((u) => u.status !== "pending")
             .map((user, i) => (
