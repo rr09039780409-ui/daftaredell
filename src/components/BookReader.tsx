@@ -68,49 +68,7 @@ const THEME_OPTIONS: {
 
 const CANVAS_PADDING_X = 40;
 const CANVAS_PADDING_Y = 32;
-
-/* ═══════════════════════════════════════════════════════════════
-   Text-wrapping utility (handles Persian / RTL text)
-   ═══════════════════════════════════════════════════════════════ */
-
-function wrapTextToLines(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number
-): string[] {
-  const paragraphs = text.split(/\n/);
-  const lines: string[] = [];
-
-  for (const paragraph of paragraphs) {
-    if (!paragraph.trim()) {
-      lines.push("");
-      continue;
-    }
-
-    const words = paragraph.split(/\s+/);
-    let currentLine = "";
-
-    for (const word of words) {
-      if (!word) continue;
-
-      const candidate = currentLine ? `${currentLine} ${word}` : word;
-      const measured = ctx.measureText(candidate);
-
-      if (measured.width > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = candidate;
-      }
-    }
-
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-  }
-
-  return lines;
-}
+const VISIBLE_BUFFER = 15;
 
 /* ═══════════════════════════════════════════════════════════════
    Wrapped lines with logical-line mapping (for highlight)
@@ -143,6 +101,7 @@ function wrapTextToLinesMapped(
 
     for (const word of words) {
       if (!word) continue;
+
       const candidate = currentLine ? `${currentLine} ${word}` : word;
       const measured = ctx.measureText(candidate);
 
@@ -165,113 +124,6 @@ function wrapTextToLinesMapped(
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Highlight info passed to canvas renderer
-   ═══════════════════════════════════════════════════════════════ */
-
-interface HighlightInfo {
-  query: string;
-  currentLogicalLine: number | null;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   Canvas rendering engine
-   ═══════════════════════════════════════════════════════════════ */
-
-function renderCanvas(
-  canvas: HTMLCanvasElement,
-  content: string,
-  settings: ReaderSettings,
-  containerWidth: number,
-  highlightInfo?: HighlightInfo | null
-): void {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  const dpr = window.devicePixelRatio || 1;
-  const { fontSize, theme, fontFamily, lineHeight } = settings;
-  const colors = getThemeColors(theme);
-
-  const fontStr = `${fontSize}px "${fontFamily}", "Vazirmatn", Tahoma, "Segoe UI", sans-serif`;
-
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.font = fontStr;
-
-  const maxWidth = Math.max(containerWidth - CANVAS_PADDING_X * 2, 60);
-  const { lines, logicalMap } = wrapTextToLinesMapped(ctx, content, maxWidth);
-
-  const lineSpacing = fontSize * lineHeight;
-  const totalHeight =
-    lines.length * lineSpacing + CANVAS_PADDING_Y * 2;
-
-  canvas.width = containerWidth * dpr;
-  canvas.height = totalHeight * dpr;
-  canvas.style.width = `${containerWidth}px`;
-  canvas.style.height = `${totalHeight}px`;
-
-  ctx.scale(dpr, dpr);
-
-  /* Background fill */
-  ctx.fillStyle = colors.bg;
-  ctx.fillRect(0, 0, containerWidth, totalHeight);
-
-  /* Draw highlights (font must be re-set after canvas resize) */
-  if (highlightInfo?.query) {
-    ctx.font = fontStr;
-    const q = highlightInfo.query.toLowerCase();
-    const x = containerWidth - CANVAS_PADDING_X;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const lower = line.toLowerCase();
-      let pos = 0;
-      while (pos < lower.length) {
-        const idx = lower.indexOf(q, pos);
-        if (idx === -1) break;
-
-        const beforeText = line.slice(0, idx);
-        const matchText = line.slice(idx, idx + q.length);
-        const beforeW = ctx.measureText(beforeText).width;
-        const matchW = ctx.measureText(matchText).width;
-
-        const matchRight = x - beforeW;
-        const matchLeft = matchRight - matchW;
-
-        const isCurrent =
-          highlightInfo.currentLogicalLine !== null &&
-          highlightInfo.currentLogicalLine !== undefined &&
-          logicalMap[i] === highlightInfo.currentLogicalLine;
-
-        ctx.fillStyle = isCurrent
-          ? "rgba(249, 115, 22, 0.3)"
-          : "rgba(250, 204, 21, 0.3)";
-        ctx.fillRect(
-          matchLeft - 3,
-          CANVAS_PADDING_Y + i * lineSpacing + 1,
-          matchW + 6,
-          lineSpacing - 2
-        );
-
-        pos = idx + q.length;
-      }
-    }
-  }
-
-  /* Text settings */
-  ctx.font = fontStr;
-  ctx.fillStyle = colors.text;
-  ctx.direction = "rtl";
-  ctx.textAlign = "right";
-  ctx.textBaseline = "top";
-
-  const x = containerWidth - CANVAS_PADDING_X;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i]) {
-      ctx.fillText(lines[i], x, CANVAS_PADDING_Y + i * lineSpacing);
-    }
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════
    BookReader component
    ═══════════════════════════════════════════════════════════════ */
 
@@ -290,17 +142,26 @@ export default function BookReader() {
   const setScrollToLine = useAppStore((s) => s.setScrollToLine);
   const highlightQuery = useAppStore((s) => s.highlightQuery);
   const setHighlightQuery = useAppStore((s) => s.setHighlightQuery);
+  const selectedBook = useAppStore((s) => s.selectedBook);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [scrollPercent, setScrollPercent] = useState(0);
   const [readerSearchOpen, setReaderSearchOpen] = useState(false);
   const [readerSearchQuery, setReaderSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [readerSearchResults, setReaderSearchResults] = useState<InBookResult[]>([]);
   const [currentResultIdx, setCurrentResultIdx] = useState(0);
-  const readerSearchInputRef = useRef<HTMLInputElement>(null);
+  const [layoutWidth, setLayoutWidth] = useState<number | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const wrappedRef = useRef<WrappedLinesResult | null>(null);
+  const bookLinesRef = useRef<string[]>([]);
+  const renderFnRef = useRef<() => void>(() => {});
+  const rafRef = useRef<number>(0);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const readerSearchInputRef = useRef<HTMLInputElement>(null);
+  const bookmarkRestoredRef = useRef<string | null>(null);
 
   const colors = useMemo(
     () => getThemeColors(readerSettings.theme),
@@ -314,10 +175,32 @@ export default function BookReader() {
 
   const ThemeIcon = currentThemeMeta.icon;
 
+  /* ═══════════════════════════════════════════════════════════
+     Pre-split book content into lines (once)
+     ═══════════════════════════════════════════════════════════ */
+
+  useEffect(() => {
+    if (bookContent) {
+      bookLinesRef.current = bookContent.split("\n");
+    }
+  }, [bookContent]);
+
+  /* ═══════════════════════════════════════════════════════════
+     Debounced search
+     ═══════════════════════════════════════════════════════════ */
+
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setDebouncedSearchQuery(readerSearchQuery);
+    }, 300);
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [readerSearchQuery]);
+
   const inBookResults = useMemo(() => {
-    if (!readerSearchQuery.trim() || !bookContent) return [];
-    const q = readerSearchQuery.trim().toLowerCase();
-    const lines = bookContent.split("\n");
+    if (!debouncedSearchQuery.trim() || bookLinesRef.current.length === 0) return [];
+    const q = debouncedSearchQuery.trim().toLowerCase();
+    const lines = bookLinesRef.current;
     const results: InBookResult[] = [];
     for (let i = 0; i < lines.length && results.length < 50; i++) {
       const idx = lines[i].toLowerCase().indexOf(q);
@@ -326,7 +209,7 @@ export default function BookReader() {
       }
     }
     return results;
-  }, [readerSearchQuery, bookContent]);
+  }, [debouncedSearchQuery]);
 
   useEffect(() => {
     setReaderSearchResults(inBookResults);
@@ -335,14 +218,9 @@ export default function BookReader() {
     }
   }, [inBookResults]);
 
-  useEffect(() => {
-    if (readerSearchResults.length > 0 && currentResultIdx < readerSearchResults.length) {
-      const line = readerSearchResults[currentResultIdx].lineIndex;
-      const lineSpacing = readerSettings.fontSize * readerSettings.lineHeight;
-      const targetY = line * lineSpacing + CANVAS_PADDING_Y - 100;
-      wrapperRef.current?.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
-    }
-  }, [currentResultIdx, readerSearchResults, readerSettings.fontSize, readerSettings.lineHeight]);
+  /* ═══════════════════════════════════════════════════════════
+     Search handlers
+     ═══════════════════════════════════════════════════════════ */
 
   const handleReaderSearchChange = useCallback((value: string) => {
     setReaderSearchQuery(value);
@@ -354,13 +232,14 @@ export default function BookReader() {
   const handleReaderSearchClose = useCallback(() => {
     setReaderSearchOpen(false);
     setReaderSearchQuery("");
+    setDebouncedSearchQuery("");
     setReaderSearchResults([]);
     setHighlightQuery(null);
     setCurrentResultIdx(0);
   }, [setHighlightQuery]);
 
   const handleReaderResultClick = useCallback((lineIndex: number) => {
- const idx = readerSearchResults.findIndex((r) => r.lineIndex === lineIndex);
+    const idx = readerSearchResults.findIndex((r) => r.lineIndex === lineIndex);
     if (idx !== -1) setCurrentResultIdx(idx);
   }, [readerSearchResults]);
 
@@ -379,8 +258,6 @@ export default function BookReader() {
     return readerSearchResults[currentResultIdx].lineIndex;
   }, [readerSearchResults, currentResultIdx]);
 
-  const activeHighlightQuery = highlightQuery;
-
   /* ═══════════════════════════════════════════════════════════
      Font loading
      ═══════════════════════════════════════════════════════════ */
@@ -397,62 +274,153 @@ export default function BookReader() {
   }, [readerSettings.fontFamily]);
 
   /* ═══════════════════════════════════════════════════════════
-     Canvas render loop
+     Compute wrapped lines (cached)
      ═══════════════════════════════════════════════════════════ */
 
-  const paint = useCallback(() => {
+  useEffect(() => {
+    if (!fontReady || !bookContent || layoutWidth === null) return;
+
     const canvas = canvasRef.current;
-    const wrapper = wrapperRef.current;
-    if (!canvas || !wrapper || !fontReady || !bookContent) return;
-    renderCanvas(
-      canvas, bookContent, readerSettings, wrapper.clientWidth,
-      activeHighlightQuery
-        ? { query: activeHighlightQuery, currentLogicalLine }
-        : null
-    );
-  }, [bookContent, readerSettings, fontReady, activeHighlightQuery, currentLogicalLine]);
+    if (!canvas) return;
 
-  useEffect(() => {
-    paint();
-  }, [paint]);
+    const dpr = window.devicePixelRatio || 1;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-    const ro = new ResizeObserver(() => paint());
-    ro.observe(wrapper);
-    return () => ro.disconnect();
-  }, [paint]);
+    const { fontSize, fontFamily, lineHeight } = readerSettings;
+    const fontStr = `${fontSize}px "${fontFamily}"`;
+
+    // Set up a temp canvas for measurement
+    const tmpCanvas = document.createElement("canvas");
+    tmpCanvas.width = layoutWidth * dpr;
+    tmpCanvas.height = 10;
+    const tmpCtx = tmpCanvas.getContext("2d")!;
+    tmpCtx.scale(dpr, dpr);
+    tmpCtx.font = fontStr;
+
+    const maxWidth = layoutWidth - CANVAS_PADDING_X * 2;
+    const result = wrapTextToLinesMapped(tmpCtx, bookContent, maxWidth);
+    wrappedRef.current = result;
+
+    // Trigger a re-render after wrap is done
+    renderFnRef.current();
+  }, [fontReady, bookContent, layoutWidth, readerSettings.fontSize, readerSettings.fontFamily, readerSettings.lineHeight]);
 
   /* ═══════════════════════════════════════════════════════════
-     Scroll tracking
+     Virtual canvas render
      ═══════════════════════════════════════════════════════════ */
 
-  const selectedBook = useAppStore((s) => s.selectedBook);
+  const renderVisibleRegion = useCallback(() => {
+    const canvas = canvasRef.current;
+    const wrapper = wrapperRef.current;
+    if (!canvas || !wrapper || !fontReady || !wrappedRef.current) return;
 
-  const bookmarkRestoredRef = useRef<string | null>(null);
+    const { lines, logicalMap } = wrappedRef.current;
+    if (lines.length === 0) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const { fontSize, fontFamily, lineHeight } = readerSettings;
+    const fontStr = `${fontSize}px "${fontFamily}"`;
+    const lineSpacing = fontSize * lineHeight;
+
+    const vW = wrapper.clientWidth;
+    const vH = wrapper.clientHeight;
+    const scrollTop = wrapper.scrollTop;
+
+    // Size canvas to viewport only
+    if (canvas.width !== Math.round(vW * dpr) || canvas.height !== Math.round(vH * dpr)) {
+      canvas.width = Math.round(vW * dpr);
+      canvas.height = Math.round(vH * dpr);
+      canvas.style.width = `${vW}px`;
+      canvas.style.height = `${vH}px`;
+    }
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Determine visible line range
+    const startLine = Math.max(0, Math.floor((scrollTop - CANVAS_PADDING_Y) / lineSpacing) - VISIBLE_BUFFER);
+    const endLine = Math.min(lines.length, Math.ceil((scrollTop + vH - CANVAS_PADDING_Y) / lineSpacing) + VISIBLE_BUFFER);
+
+    // Clear
+    ctx.fillStyle = colors.bg;
+    ctx.fillRect(0, 0, vW, vH);
+
+    ctx.font = fontStr;
+    ctx.fillStyle = colors.text;
+    ctx.direction = "rtl";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "top";
+
+    const activeQuery = highlightQuery;
+    const x = vW - CANVAS_PADDING_X;
+
+    for (let i = startLine; i < endLine; i++) {
+      const line = lines[i];
+      const y = CANVAS_PADDING_Y + i * lineSpacing - scrollTop;
+
+      if (!line) continue;
+
+      // Draw highlight if needed
+      if (activeQuery) {
+        const q = activeQuery.toLowerCase();
+        const lower = line.toLowerCase();
+        let pos = 0;
+        while (pos < lower.length) {
+          const idx = lower.indexOf(q, pos);
+          if (idx === -1) break;
+
+          const beforeText = line.slice(0, idx);
+          const matchText = line.slice(idx, idx + q.length);
+          const beforeW = ctx.measureText(beforeText).width;
+          const matchW = ctx.measureText(matchText).width;
+
+          const matchRight = x - beforeW;
+          const matchLeft = matchRight - matchW;
+
+          const isCurrent =
+            currentLogicalLine !== null &&
+            currentLogicalLine !== undefined &&
+            logicalMap[i] === currentLogicalLine;
+
+          ctx.fillStyle = isCurrent
+            ? "rgba(249, 115, 22, 0.3)"
+            : "rgba(250, 204, 21, 0.3)";
+          ctx.fillRect(
+            matchLeft - 3,
+            y + 1,
+            matchW + 6,
+            lineSpacing - 2
+          );
+
+          ctx.fillStyle = colors.text;
+          pos = idx + q.length;
+        }
+      }
+
+      ctx.fillText(line, x, y);
+    }
+  }, [fontReady, readerSettings, colors, highlightQuery, currentLogicalLine]);
+
+  // Keep renderFnRef updated
   useEffect(() => {
-    if (!selectedBook || !bookContent) return;
-    const bookId = selectedBook.id;
-    if (bookmarkRestoredRef.current === bookId) return;
-    bookmarkRestoredRef.current = bookId;
+    renderFnRef.current = renderVisibleRegion;
+  }, [renderVisibleRegion]);
 
-    const timer = setTimeout(() => {
-      if (scrollToLine !== null && scrollToLine > 0) {
-        const lineSpacing = readerSettings.fontSize * readerSettings.lineHeight;
-        const targetY = scrollToLine * lineSpacing + CANVAS_PADDING_Y - 100;
-        wrapperRef.current?.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
-        setScrollToLine(null);
-        return;
-      }
-      const saved = localStorage.getItem(`bookmark-${bookId}`);
-      if (saved) {
-        const pos = parseFloat(saved);
-        wrapperRef.current?.scrollTo({ top: pos });
-      }
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [selectedBook?.id, bookContent, scrollToLine, readerSettings.fontSize, readerSettings.lineHeight, setScrollToLine]);
+  /* ═══════════════════════════════════════════════════════════
+     Total scroll height calculation
+     ═══════════════════════════════════════════════════════════ */
+
+  const totalHeight = useMemo(() => {
+    if (!wrappedRef.current) return null;
+    const lineSpacing = readerSettings.fontSize * readerSettings.lineHeight;
+    return wrappedRef.current.lines.length * lineSpacing + CANVAS_PADDING_Y * 2;
+  }, [wrappedRef.current, readerSettings.fontSize, readerSettings.lineHeight]);
+
+  /* ═══════════════════════════════════════════════════════════
+     Scroll handler with rAF
+     ═══════════════════════════════════════════════════════════ */
 
   const handleScroll = useCallback(() => {
     const el = wrapperRef.current;
@@ -462,7 +430,97 @@ export default function BookReader() {
     if (selectedBook) {
       localStorage.setItem(`bookmark-${selectedBook.id}`, String(el.scrollTop));
     }
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(renderFnRef.current);
   }, [selectedBook]);
+
+  /* ═══════════════════════════════════════════════════════════
+     ResizeObserver with debounce
+     ═══════════════════════════════════════════════════════════ */
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        setLayoutWidth(w);
+        // Immediate render at current size
+        renderFnRef.current();
+        // Debounced re-wrap
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          setLayoutWidth(wrapper.clientWidth);
+        }, 200);
+      }
+    });
+    ro.observe(wrapper);
+    return () => {
+      ro.disconnect();
+      if (resizeTimer) clearTimeout(resizeTimer);
+    };
+  }, []);
+
+  /* ═══════════════════════════════════════════════════════════
+     Re-render on theme/highlight change
+     ═══════════════════════════════════════════════════════════ */
+
+  useEffect(() => {
+    if (wrappedRef.current) {
+      renderVisibleRegion();
+    }
+  }, [colors, highlightQuery, currentLogicalLine, renderVisibleRegion]);
+
+  /* ═══════════════════════════════════════════════════════════
+     Scroll to result
+     ═══════════════════════════════════════════════════════════ */
+
+  useEffect(() => {
+    if (readerSearchResults.length > 0 && currentResultIdx < readerSearchResults.length) {
+      const line = readerSearchResults[currentResultIdx].lineIndex;
+      if (!wrappedRef.current) return;
+      const lineSpacing = readerSettings.fontSize * readerSettings.lineHeight;
+      // Find the first wrapped line that maps to this logical line
+      const wrappedLines = wrappedRef.current.logicalMap;
+      let wrappedIdx = wrappedLines.indexOf(line);
+      if (wrappedIdx === -1) wrappedIdx = line; // fallback
+      const targetY = wrappedIdx * lineSpacing + CANVAS_PADDING_Y - 100;
+      wrapperRef.current?.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+    }
+  }, [currentResultIdx, readerSearchResults, readerSettings.fontSize, readerSettings.lineHeight]);
+
+  /* ═══════════════════════════════════════════════════════════
+     Bookmark restore / scroll-to-line
+     ═══════════════════════════════════════════════════════════ */
+
+  useEffect(() => {
+    if (!selectedBook || !bookContent) return;
+    const bookId = selectedBook.id;
+    if (bookmarkRestoredRef.current === bookId) return;
+    bookmarkRestoredRef.current = bookId;
+
+    const timer = setTimeout(() => {
+      if (scrollToLine !== null && scrollToLine > 0) {
+        if (!wrappedRef.current) return;
+        const lineSpacing = readerSettings.fontSize * readerSettings.lineHeight;
+        const wrappedLines = wrappedRef.current.logicalMap;
+        let wrappedIdx = wrappedLines.indexOf(scrollToLine);
+        if (wrappedIdx === -1) wrappedIdx = scrollToLine;
+        const targetY = wrappedIdx * lineSpacing + CANVAS_PADDING_Y - 100;
+        wrapperRef.current?.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+        setScrollToLine(null);
+        return;
+      }
+      const saved = localStorage.getItem(`bookmark-${bookId}`);
+      if (saved) {
+        const pos = parseFloat(saved);
+        wrapperRef.current?.scrollTo({ top: pos });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [selectedBook?.id, bookContent, scrollToLine, readerSettings.fontSize, readerSettings.lineHeight, setScrollToLine]);
 
   /* ═══════════════════════════════════════════════════════════
      Settings handlers
@@ -602,7 +660,7 @@ export default function BookReader() {
                   ))}
                 </div>
               )}
-              {readerSearchQuery.trim() && readerSearchResults.length === 0 && (
+              {readerSearchQuery.trim() && readerSearchResults.length === 0 && debouncedSearchQuery && (
                 <p className="py-2 text-center text-xs" style={{ color: `${colors.text}50` }}>نتیجه‌ای یافت نشد</p>
               )}
             </div>
@@ -626,17 +684,29 @@ export default function BookReader() {
           </div>
         )}
 
-        <canvas
-          ref={canvasRef}
-          className="block select-none"
+        {/* Spacer div provides total scroll height */}
+        <div
           style={{
-            pointerEvents: fontReady ? "auto" : "none",
-            WebkitUserSelect: "none",
-            WebkitTouchCallout: "none",
-            userSelect: "none",
+            height: totalHeight || "100%",
+            minHeight: "100%",
+            position: "relative",
           }}
-          onContextMenu={handleCanvasContextMenu}
-        />
+        >
+          {/* Canvas sticks to top of viewport, sized to viewport only */}
+          <canvas
+            ref={canvasRef}
+            className="block select-none"
+            style={{
+              position: "sticky",
+              top: 0,
+              pointerEvents: fontReady ? "auto" : "none",
+              WebkitUserSelect: "none",
+              WebkitTouchCallout: "none",
+              userSelect: "none",
+            }}
+            onContextMenu={handleCanvasContextMenu}
+          />
+        </div>
       </div>
 
       {/* ── Bottom toolbar ── */}

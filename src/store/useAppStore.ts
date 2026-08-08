@@ -5,6 +5,13 @@ export type AppView = "library" | "reader" | "admin";
 export type ReaderTheme = "light" | "dark" | "sepia";
 export type SearchMode = "titles" | "book" | "all";
 
+export interface User {
+  id: string;
+  username: string;
+  displayName: string;
+  role: string;
+}
+
 export interface Book {
   id: string;
   title: string;
@@ -26,6 +33,7 @@ export interface ReaderSettings {
 
 interface AppState {
   view: AppView;
+  currentUser: User | null;
   books: Book[];
   selectedBook: Book | null;
   bookContent: string;
@@ -41,6 +49,7 @@ interface AppState {
   scrollToLine: number | null;
   highlightQuery: string | null;
 
+  setCurrentUser: (user: User | null) => void;
   setView: (view: AppView) => void;
   setBooks: (books: Book[]) => void;
   setSelectedBook: (book: Book | null) => void;
@@ -72,6 +81,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       view: "library",
+      currentUser: null,
       books: [],
       selectedBook: null,
       bookContent: "",
@@ -92,6 +102,7 @@ export const useAppStore = create<AppState>()(
         lineHeight: 2,
       },
 
+      setCurrentUser: (currentUser) => set({ currentUser }),
       setView: (view) => set({ view }),
       setBooks: (books) => set({ books }),
       setSelectedBook: (book) => set({ selectedBook: book }),
@@ -115,6 +126,7 @@ export const useAppStore = create<AppState>()(
       name: "bookshelf-storage",
       partialize: (state) => ({
         readerSettings: state.readerSettings,
+        currentUser: state.currentUser,
         isAdmin: state.isAdmin,
         isSeeded: state.isSeeded,
       }),

@@ -5,6 +5,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { Header } from "@/components/Header";
 import BookGrid from "@/components/BookGrid";
 import BookReader from "@/components/BookReader";
+import AuthScreen from "@/components/AuthScreen";
 import { AnimatePresence, motion } from "framer-motion";
 
 const HIDE_ADMIN = process.env.NEXT_PUBLIC_HIDE_ADMIN === "true";
@@ -17,7 +18,7 @@ if (!HIDE_ADMIN) {
 }
 
 export default function HomePage() {
-  const { view, setBooks, setCategories, isSeeded, setSeeded } = useAppStore();
+  const { view, currentUser, isAdmin, setBooks, setCategories, isSeeded, setSeeded } = useAppStore();
 
   const fetchData = useCallback(async () => {
     try {
@@ -35,8 +36,10 @@ export default function HomePage() {
   }, [setBooks, setCategories]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser, fetchData]);
 
   useEffect(() => {
     if (!isSeeded) {
@@ -46,11 +49,16 @@ export default function HomePage() {
           if (!data.error) {
             setSeeded(true);
           }
-          fetchData();
+          if (currentUser) fetchData();
         })
         .catch(console.error);
     }
-  }, [isSeeded, setSeeded, fetchData]);
+  }, [isSeeded, setSeeded, fetchData, currentUser]);
+
+  /* Show auth screen if user not logged in and not admin */
+  if (!currentUser && !isAdmin) {
+    return <AuthScreen />;
+  }
 
   return (
     <div className="min-h-screen flex flex-col">

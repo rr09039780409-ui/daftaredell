@@ -18,6 +18,8 @@ import {
   BookOpen,
   FileSearch,
   X,
+  LogOut,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +60,8 @@ export function Header() {
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const searchMode = useAppStore((s) => s.searchMode);
   const setSearchExpanded = useAppStore((s) => s.setSearchExpanded);
+  const currentUser = useAppStore((s) => s.currentUser);
+  const setCurrentUser = useAppStore((s) => s.setCurrentUser);
   const isAdmin = useAppStore((s) => s.isAdmin);
   const setAdmin = useAppStore((s) => s.setAdmin);
   const selectedBook = useAppStore((s) => s.selectedBook);
@@ -341,6 +345,42 @@ export function Header() {
                 <p>{resolvedTheme === "dark" ? "حالت روشن" : "حالت تاریک"}</p>
               </TooltipContent>
             </Tooltip>
+
+            {/* User info & logout */}
+            {currentUser && (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 px-2.5 py-1.5">
+                      <div className="flex size-6 items-center justify-center rounded-full bg-primary/10">
+                        <User className="size-3.5 text-primary" />
+                      </div>
+                      <span className="hidden text-xs font-medium sm:inline">
+                        {currentUser.displayName}
+                      </span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>{currentUser.displayName} (@{currentUser.username})</p>
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setCurrentUser(null)}
+                      aria-label="خروج از حساب"
+                    >
+                      <LogOut className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>خروج از حساب</p>
+                  </TooltipContent>
+                </Tooltip>
+              </>
+            )}
 
             {/* Admin toggle */}
             {!HIDE_ADMIN && (

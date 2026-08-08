@@ -19,6 +19,9 @@ import {
   Eye,
   EyeOff,
   Megaphone,
+  Users,
+  Check,
+  X as XIcon,
 } from "lucide-react";
 import { useAppStore, type Book } from "@/store/useAppStore";
 import { toast } from "@/hooks/use-toast";
@@ -494,7 +497,7 @@ export default function AdminPanel() {
             <Separator className="mb-6" />
 
             <Tabs defaultValue="books" dir="rtl">
-              <TabsList className="mb-6 grid w-full grid-cols-5">
+              <TabsList className="mb-6 grid w-full grid-cols-6">
                 <TabsTrigger value="books" className="gap-1.5 text-xs sm:text-sm">
                   <BookOpen className="h-4 w-4" />
                   <span className="hidden sm:inline">کتاب‌ها</span>
@@ -510,6 +513,10 @@ export default function AdminPanel() {
                 <TabsTrigger value="settings" className="gap-1.5 text-xs sm:text-sm">
                   <KeyRound className="h-4 w-4" />
                   <span className="hidden sm:inline">تنظیمات</span>
+                </TabsTrigger>
+                <TabsTrigger value="users" className="gap-1.5 text-xs sm:text-sm">
+                  <Users className="h-4 w-4" />
+                  <span className="hidden sm:inline">کاربران</span>
                 </TabsTrigger>
                 <TabsTrigger value="backup" className="gap-1.5 text-xs sm:text-sm">
                   <Download className="h-4 w-4" />
@@ -803,6 +810,10 @@ export default function AdminPanel() {
                   </Card>
                 </div>
               </TabsContent>
+              <TabsContent value="users">
+                <UsersTab />
+              </TabsContent>
+
             </Tabs>
 
             <Dialog open={bookDialogOpen} onOpenChange={setBookDialogOpen}>
@@ -1333,6 +1344,215 @@ function SettingsTab({ adminPw }: { adminPw: string }) {
           </form>
         </div>
       </Card>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Users Tab
+   ═══════════════════════════════════════════════════════════════ */
+interface UserItem {
+  id: string;
+  username: string;
+  displayName: string;
+  role: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function UsersTab() {
+  const [usersList, setUsersList] = useState<UserItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/users");
+      if (res.ok) {
+        const data = await res.json();
+        setUsersList(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      /* empty */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  const updateStatus = async (id: string, status: "approved" | "rejected") => {
+    try {
+      const res = await fetch(`/api/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) {
+        toast({ title: status === "approved" ? "کاربر تأیید شد" : "کاربر رد شد" });
+        fetchUsers();
+      } else {
+        const d = await res.json();
+        toast({ title: "خطا", description: d.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "خطا", variant: "destructive" });
+    }
+  };
+
+  const deleteUser = async (id: string) => {
+    try {
+      const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast({ title: "کاربر حذف شد" });
+        fetchUsers();
+      }
+    } catch {
+      toast({ title: "خطا", variant: "destructive" });
+    }
+  };
+
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case "approved":
+        return <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/20">تأیید شده</Badge>;
+      case "rejected":
+        return <Badge className="bg-red-500/15 text-red-600 hover:bg-red-500/20">رد شده</Badge>;
+      default:
+        return <Badge className="bg-amber-500/15 text-amber-600 hover:bg-amber-500/20">منتظر تأیید</Badge>;
+    }
+  };
+
+  const pendingCount = usersList.filter((u) => u.status === "pending").length;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="mb-2 text-lg font-semibold">مدیریت کاربران</h2>
+        <p className="text-sm text-muted-foreground">
+          {usersList.length} کاربر ثبت‌نام کرده
+          {pendingCount > 0 && (
+            <span className="mr-2 font-semibold text-amber-600">
+              ({pendingCount} منتظر تأیید)
+            </span>
+          )}
+        </p>
+      </div>
+
+      <Separator />
+
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : usersList.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-10 text-center">
+          <Users className="mb-3 h-10 w-10 text-muted-foreground/40" />
+          <p className="text-muted-foreground text-sm">هنوز کاربری ثبت‌نام نکرده است</p>
+        </div>
+      ) : (
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+          {/* Pending users first */
+          {usersList
+            .filter((u) => u.status === "pending")
+            .map((user, i) => (
+              <motion.div
+                key={user.id}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.04 }}
+              >
+                <Card className="overflow-hidden border-amber-500/30">
+                  <CardContent className="flex items-center gap-3 p-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/10">
+                      <Users className="h-4 w-4 text-amber-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium">{user.displayName || user.username}</p>
+                        {statusBadge(user.status)}
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">
+                        @{user.username}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                        onClick={() => updateStatus(user.id, "approved")}
+                        title="تأیید"
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                        onClick={() => updateStatus(user.id, "rejected")}
+                        title="رد"
+                      >
+                        <XIcon className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+
+          {/* Approved/Rejected users */
+          {usersList
+            .filter((u) => u.status !== "pending")
+            .map((user, i) => (
+              <motion.div
+                key={user.id}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.04 }}
+              >
+                <Card className="overflow-hidden transition-shadow hover:shadow-md">
+                  <CardContent className="flex items-center gap-3 p-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                      <Users className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium">{user.displayName || user.username}</p>
+                        {statusBadge(user.status)}
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">
+                        @{user.username} &middot; {new Date(user.createdAt).toLocaleDateString("fa-IR")}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      {user.status === "rejected" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                          onClick={() => updateStatus(user.id, "approved")}
+                          title="تأیید"
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => deleteUser(user.id)}
+                        title="حذف"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

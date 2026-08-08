@@ -21,7 +21,7 @@ export async function GET(
 
     const decryptedContent = decrypt(book.content);
 
-    let category: { id: string; name: string; createdAt: string } | null = null;
+    let category = null;
     if (book.categoryId) {
       const [cat] = await db
         .select()

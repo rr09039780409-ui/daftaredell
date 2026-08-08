@@ -43,6 +43,17 @@ export const bookmarks = sqliteTable("Bookmark", {
   updatedAt: text("updatedAt").notNull(),
 });
 
+export const users = sqliteTable("User", {
+  id: text("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  passwordHash: text("passwordHash").notNull(),
+  displayName: text("displayName").notNull().default(""),
+  role: text("role").notNull().default("user"),
+  status: text("status").notNull().default("pending"),
+  createdAt: text("createdAt").notNull(),
+  updatedAt: text("updatedAt").notNull(),
+});
+
 // Relations
 export const categoriesRelations = relations(categories, ({ many }) => ({
   books: many(books),
